@@ -4,18 +4,16 @@ A spaced-repetition study app: students track subjects/topics, take quizzes, and
 
 ## Stack
 
-- **Frontend**: Next.js (App Router) + TypeScript + Tailwind CSS + shadcn/ui
-- **Backend/DB**: Supabase (PostgreSQL + Auth)
+- **Frontend**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui
+- **Backend/DB**: Supabase (PostgreSQL + Auth), accessed directly from the client
 
 ## Getting Started
 
-1. Copy the env template and fill in your Supabase project credentials:
+1. Copy the env template and fill in your Supabase project credentials (Supabase project settings → API):
 
    ```bash
    cp .env.local.example .env.local
    ```
-
-   Values come from your Supabase project settings → API.
 
 2. Install dependencies and run the dev server:
 
@@ -24,14 +22,11 @@ A spaced-repetition study app: students track subjects/topics, take quizzes, and
    npm run dev
    ```
 
-   Open [http://localhost:3000](http://localhost:3000).
-
 ## Project structure
 
-- `src/app` — routes (App Router)
+- `src/App.tsx` — app entry component
 - `src/components/ui` — shadcn/ui components
-- `src/lib/supabase` — Supabase client helpers (browser, server, middleware)
-- `middleware.ts` — refreshes the Supabase auth session on each request
+- `src/lib/supabase.ts` — Supabase client (browser)
 
 ## Adding shadcn/ui components
 
