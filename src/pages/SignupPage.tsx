@@ -1,20 +1,50 @@
 import { useState, type FormEvent } from "react";
 import { FormField } from "@/components/FormField";
 import { Button } from "@/components/ui/button";
-import { Link } from "@/lib/router";
+import { Link, navigate } from "@/lib/router";
+import { supabase } from "@/lib/supabase";
 
 export function SignupPage() {
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    if (data.get("password") !== data.get("confirm_password")) {
+    const firstName = data.get("first_name") as string;
+    const lastName = data.get("last_name") as string;
+    const email = data.get("email") as string;
+    const password = data.get("password") as string;
+
+    if (password !== data.get("confirm_password")) {
       setError("Passwords do not match.");
       return;
     }
+
     setError(null);
-    // TODO: create the account with Supabase Auth.
+    setMessage(null);
+    setLoading(true);
+    const { data: signUpData, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { first_name: firstName, last_name: lastName },
+      },
+    });
+    setLoading(false);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    if (!signUpData.session) {
+      setMessage("Check your email to confirm your account before logging in.");
+      return;
+    }
+
+    navigate("/dashboard");
   }
 
   return (
@@ -73,9 +103,10 @@ export function SignupPage() {
           />
 
           {error && <p className="text-sm text-destructive">{error}</p>}
+          {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
-          <Button type="submit" size="lg" className="mt-2 w-full">
-            Create Account
+          <Button type="submit" size="lg" className="mt-2 w-full" disabled={loading}>
+            {loading ? "Creating account..." : "Create Account"}
           </Button>
         </form>
 

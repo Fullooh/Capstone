@@ -3,6 +3,7 @@ import { usePathname } from "@/lib/router";
 import { HomePage } from "@/pages/HomePage";
 import { LoginPage } from "@/pages/LoginPage";
 import { SignupPage } from "@/pages/SignupPage";
+import { DashboardPage } from "@/pages/DashboardPage";
 
 function CurrentPage({ pathname }: { pathname: string }) {
   switch (pathname) {
@@ -10,6 +11,8 @@ function CurrentPage({ pathname }: { pathname: string }) {
       return <LoginPage />;
     case "/signup":
       return <SignupPage />;
+    case "/dashboard":
+      return <DashboardPage />;
     default:
       return <HomePage />;
   }

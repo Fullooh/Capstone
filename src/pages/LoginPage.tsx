@@ -1,12 +1,33 @@
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { FormField } from "@/components/FormField";
 import { Button } from "@/components/ui/button";
-import { Link } from "@/lib/router";
+import { Link, navigate } from "@/lib/router";
+import { supabase } from "@/lib/supabase";
 
 export function LoginPage() {
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // TODO: sign in with Supabase Auth.
+    const data = new FormData(event.currentTarget);
+    const email = data.get("email") as string;
+    const password = data.get("password") as string;
+
+    setError(null);
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    setLoading(false);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    navigate("/dashboard");
   }
 
   return (
@@ -37,8 +58,10 @@ export function LoginPage() {
             required
           />
 
-          <Button type="submit" size="lg" className="mt-2 w-full">
-            Login
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          <Button type="submit" size="lg" className="mt-2 w-full" disabled={loading}>
+            {loading ? "Logging in..." : "Login"}
           </Button>
         </form>
 
