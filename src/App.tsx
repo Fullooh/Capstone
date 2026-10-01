@@ -4,6 +4,10 @@ import { HomePage } from "@/pages/HomePage";
 import { LoginPage } from "@/pages/LoginPage";
 import { SignupPage } from "@/pages/SignupPage";
 import { DashboardPage } from "@/pages/DashboardPage";
+import { SchoolPage } from "@/pages/SchoolPage";
+import { WorkPage } from "@/pages/WorkPage";
+import { NotesPage } from "@/pages/NotesPage";
+
 
 function CurrentPage({ pathname }: { pathname: string }) {
   switch (pathname) {
@@ -13,6 +17,12 @@ function CurrentPage({ pathname }: { pathname: string }) {
       return <SignupPage />;
     case "/dashboard":
       return <DashboardPage />;
+    case "/school":
+      return <SchoolPage />;
+    case "/work":
+      return <WorkPage />;
+    case "/notes":
+      return <NotesPage />;
     default:
       return <HomePage />;
   }
