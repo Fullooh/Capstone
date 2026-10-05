@@ -1,3 +1,4 @@
+import { Toaster } from "sonner";
 import { SiteHeader } from "@/components/SiteHeader";
 import { usePathname } from "@/lib/router";
 import { HomePage } from "@/pages/HomePage";
@@ -35,6 +36,7 @@ function App() {
     <div className="min-h-svh bg-background">
       <SiteHeader />
       <CurrentPage pathname={pathname} />
+      <Toaster position="top-center" richColors closeButton />
     </div>
   );
 }

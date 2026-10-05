@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { toast } from "sonner";
 import { FormField } from "@/components/FormField";
 import { Button } from "@/components/ui/button";
 import { Link, navigate } from "@/lib/router";
@@ -6,12 +7,12 @@ import { supabase } from "@/lib/supabase";
 
 export function SignupPage() {
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const firstName = data.get("first_name") as string;
     const lastName = data.get("last_name") as string;
     const email = data.get("email") as string;
@@ -23,7 +24,6 @@ export function SignupPage() {
     }
 
     setError(null);
-    setMessage(null);
     setLoading(true);
     const { data: signUpData, error } = await supabase.auth.signUp({
       email,
@@ -35,15 +35,28 @@ export function SignupPage() {
     setLoading(false);
 
     if (error) {
+      if (error.code === "over_email_send_rate_limit" || error.status === 429) {
+        toast.error("Too many sign-up attempts", {
+          description: "We couldn't send a confirmation email right now. Please wait a bit and try again.",
+          duration: 10000,
+        });
+        return;
+      }
       setError(error.message);
+      toast.error("Sign up failed", { description: error.message });
       return;
     }
 
     if (!signUpData.session) {
-      setMessage("Check your email to confirm your account before logging in.");
+      form.reset();
+      toast.success("Account created!", {
+        description: `We sent a confirmation link to ${email}. Confirm your email before logging in.`,
+        duration: 10000,
+      });
       return;
     }
 
+    toast.success("Welcome!", { description: "Your account is ready." });
     navigate("/dashboard");
   }
 
@@ -103,7 +116,6 @@ export function SignupPage() {
           />
 
           {error && <p className="text-sm text-destructive">{error}</p>}
-          {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
           <Button type="submit" size="lg" className="mt-2 w-full" disabled={loading}>
             {loading ? "Creating account..." : "Create Account"}
