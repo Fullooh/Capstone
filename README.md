@@ -27,6 +27,7 @@ A spaced-repetition study app: students track subjects/topics, take quizzes, and
 - `src/App.tsx` — app entry component
 - `src/components/ui` — shadcn/ui components
 - `src/lib/supabase.ts` — Supabase client (browser)
+- `supabase/schema.sql` — database schema (SQL)
 
 ## Adding shadcn/ui components
 
@@ -34,6 +35,18 @@ A spaced-repetition study app: students track subjects/topics, take quizzes, and
 npx shadcn@latest add <component>
 ```
 
-## Data model (planned)
+## Data model
 
-Students, subjects, topics, quiz attempts, and review schedules — modeled relationally in Supabase/Postgres. Schema and the spaced-repetition/weak-area-detection logic are not yet implemented.
+Tables live in Supabase/Postgres. The SQL that creates them is in `supabase/schema.sql`. When you change the database, run the change in the Supabase SQL Editor and update `schema.sql` to match.
+
+Every table has Row Level Security on, so each user can only read and write their own rows. `user_id` defaults to the logged-in user, so the frontend doesn't need to send it.
+
+| Table | Page | Rows per user | Columns |
+|---|---|---|---|
+| `profiles` | Signup | 1 (auto-created on signup) | `id`, `first_name`, `last_name` |
+| `subjects` | School | many | `id`, `user_id`, `name` |
+| `school_info` | School | 1 (save with `upsert`) | `user_id`, `grade`, `difficulty`, `study_hours`, `notes` |
+| `work_info` | Work | many | `id`, `user_id`, `job`, `work_days`, `start_time`, `end_time`, `priority`, `notes` |
+| `notes` | Notes | many | `id`, `user_id`, `title`, `category`, `body` |
+
+`difficulty` and `priority` accept `low` / `medium` / `high`. `category` accepts `general` / `school` / `work` / `personal` / `goal`.
