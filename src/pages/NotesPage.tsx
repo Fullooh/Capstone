@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { Link, navigate } from "@/lib/router";
@@ -40,7 +40,7 @@ export function NotesPage() {
     });
   }, []);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
