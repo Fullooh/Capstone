@@ -8,6 +8,10 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { SchoolPage } from "@/pages/SchoolPage";
 import { WorkPage } from "@/pages/WorkPage";
 import { NotesPage } from "@/pages/NotesPage";
+import { WorkoutPage } from "@/pages/WorkoutPage";
+import { PersonalPage } from "@/pages/PersonalPage";
+import { GoalsPage } from "@/pages/GoalsPage";
+import { SchedulePage } from "@/pages/SchedulePage";
 
 
 function CurrentPage({ pathname }: { pathname: string }) {
@@ -24,6 +28,14 @@ function CurrentPage({ pathname }: { pathname: string }) {
       return <WorkPage />;
     case "/notes":
       return <NotesPage />;
+    case "/workout":
+      return <WorkoutPage />;
+    case "/personal":
+      return <PersonalPage />;
+    case "/goals":
+      return <GoalsPage />;
+    case "/schedule":
+      return <SchedulePage />;
     default:
       return <HomePage />;
   }

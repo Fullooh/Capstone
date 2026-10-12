@@ -108,4 +108,5 @@ export function SchoolPage() {
       </section>
     </main>
   );
+
 }
