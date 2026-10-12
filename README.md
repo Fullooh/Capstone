@@ -44,8 +44,8 @@ Every table has Row Level Security on, so each user can only read and write thei
 | Table | Page | Rows per user | Columns |
 |---|---|---|---|
 | `profiles` | Signup | 1 (auto-created on signup) | `id`, `first_name`, `last_name` |
-| `subjects` | School | many | `id`, `user_id`, `name` |
-| `school_info` | School | 1 (save with `upsert`) | `user_id`, `grade`, `difficulty`, `study_hours`, `notes` |
+| `subjects` | School, Dashboard | many | `id`, `user_id`, `name`, `grade`, `difficulty`, `study_hours`, `notes` |
+| `school_info` | unused (replaced by per-class columns on `subjects`) | 1 (save with `upsert`) | `user_id`, `grade`, `difficulty`, `study_hours`, `notes` |
 | `work_info` | Work | many | `id`, `user_id`, `job`, `work_days`, `start_time`, `end_time`, `priority`, `notes` |
 | `notes` | Notes | many | `id`, `user_id`, `title`, `category`, `body` |
 

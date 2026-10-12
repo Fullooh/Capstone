@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { Link, navigate } from "@/lib/router";
+import { SubjectsSection } from "@/components/SubjectsSection";
 
 const sections = [
   {
@@ -208,6 +209,11 @@ export function DashboardPage() {
             ))}
           </div>
         </section>
+
+        {/* Subjects */}
+        <div className="mt-9">
+          <SubjectsSection />
+        </div>
 
         {/* Schedule feature */}
         <section className="mt-9 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">

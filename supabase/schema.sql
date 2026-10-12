@@ -37,15 +37,20 @@ select id, raw_user_meta_data ->> 'first_name', raw_user_meta_data ->> 'last_nam
 from auth.users
 on conflict (id) do nothing;
 
--- SUBJECTS: "Your Subjects" on the School page (many per user)
+-- SUBJECTS: classes on the School page, each with its own grade/difficulty/study time (many per user)
 create table if not exists public.subjects (
   id bigint generated always as identity primary key,
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   name text not null,
+  grade numeric check (grade >= 0),
+  difficulty text check (difficulty in ('low', 'medium', 'high')),
+  study_hours numeric check (study_hours >= 0),
+  notes text,
   created_at timestamptz not null default now()
 );
 
--- SCHOOL INFO: grade, difficulty, study hours, notes (one row per user; save with upsert)
+-- SCHOOL INFO: (no longer used by the frontend; per-class details now live on subjects)
+-- grade, difficulty, study hours, notes (one row per user; save with upsert)
 create table public.school_info (
   user_id uuid primary key default auth.uid() references auth.users(id) on delete cascade,
   grade numeric check (grade >= 0),
