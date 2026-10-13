@@ -45,8 +45,10 @@ Every table has Row Level Security on, so each user can only read and write thei
 |---|---|---|---|
 | `profiles` | Signup | 1 (auto-created on signup) | `id`, `first_name`, `last_name` |
 | `subjects` | School, Dashboard | many | `id`, `user_id`, `name`, `grade`, `difficulty`, `study_hours`, `notes` |
-| `school_info` | unused (replaced by per-class columns on `subjects`) | 1 (save with `upsert`) | `user_id`, `grade`, `difficulty`, `study_hours`, `notes` |
 | `work_info` | Work | many | `id`, `user_id`, `job`, `work_days`, `start_time`, `end_time`, `priority`, `notes` |
 | `notes` | Notes | many | `id`, `user_id`, `title`, `category`, `body` |
+| `goals` | Goals | many | `id`, `user_id`, `goal`, `priority`, `deadline`, `notes` |
+| `workouts` | Workout | many | `id`, `user_id`, `workout_type`, `preferred_day`, `preferred_time`, `notes` |
+| `personal_activities` | Personal | many | `id`, `user_id`, `activity`, `day`, `time`, `notes` |
 
 `difficulty` and `priority` accept `low` / `medium` / `high`. `category` accepts `general` / `school` / `work` / `personal` / `goal`.
