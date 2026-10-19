@@ -12,6 +12,11 @@ type ClassFormProps = {
 
 const inputClass = "mt-2 w-full rounded-md border bg-background px-3 py-2";
 
+function textOrNull(value: FormDataEntryValue | null) {
+  const text = (value as string | null)?.trim();
+  return text || null;
+}
+
 function numberOrNull(value: FormDataEntryValue | null) {
   const text = (value as string | null)?.trim();
   return text ? Number(text) : null;
@@ -36,6 +41,9 @@ export function ClassForm({ initial, saving, onSubmit, onCancel }: ClassFormProp
       grade: numberOrNull(data.get("grade")),
       difficulty: (data.get("difficulty") as Difficulty | "") || null,
       study_hours: numberOrNull(data.get("studyHours")),
+      class_days: textOrNull(data.get("classDays")),
+      start_time: textOrNull(data.get("startTime")),
+      end_time: textOrNull(data.get("endTime")),
       notes: notes || null,
     });
   }
@@ -116,6 +124,45 @@ export function ClassForm({ initial, saving, onSubmit, onCancel }: ClassFormProp
             step="any"
             defaultValue={initial?.study_hours ?? ""}
             placeholder="Example: 5"
+            className={inputClass}
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label htmlFor="classDays" className="text-sm font-medium">
+            Class Days
+          </label>
+          <input
+            id="classDays"
+            name="classDays"
+            defaultValue={initial?.class_days ?? ""}
+            placeholder="Example: Mon/Wed/Fri or Tue-Thu"
+            className={inputClass}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="classStart" className="text-sm font-medium">
+            Start Time
+          </label>
+          <input
+            id="classStart"
+            name="startTime"
+            type="time"
+            defaultValue={initial?.start_time?.slice(0, 5) ?? ""}
+            className={inputClass}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="classEnd" className="text-sm font-medium">
+            End Time
+          </label>
+          <input
+            id="classEnd"
+            name="endTime"
+            type="time"
+            defaultValue={initial?.end_time?.slice(0, 5) ?? ""}
             className={inputClass}
           />
         </div>

@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { difficultyStyles, letterGrade, type Subject } from "@/lib/subjects";
+import { difficultyStyles, formatTime, letterGrade, type Subject } from "@/lib/subjects";
 
 type ClassCardProps = {
   subject: Subject;
@@ -23,6 +23,19 @@ export function ClassCard({ subject, deleting, onEdit, onDelete }: ClassCardProp
           </span>
         )}
       </div>
+
+      {(subject.class_days || subject.start_time) && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {subject.class_days || "No days set"}
+          {subject.start_time && (
+            <>
+              {" · "}
+              {formatTime(subject.start_time)}
+              {subject.end_time && ` – ${formatTime(subject.end_time)}`}
+            </>
+          )}
+        </p>
+      )}
 
       <dl className="mt-4 grid grid-cols-2 gap-3">
         <div className="rounded-lg bg-muted/50 p-3">

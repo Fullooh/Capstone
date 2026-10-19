@@ -20,7 +20,7 @@ export function SchoolPage() {
   async function loadSubjects() {
     const { data, error } = await supabase
       .from("subjects")
-      .select("id, name, grade, difficulty, study_hours, notes")
+      .select("id, name, grade, difficulty, study_hours, class_days, start_time, end_time, notes")
       .order("created_at", { ascending: true });
 
     if (error) toast.error("Couldn't load classes", { description: error.message });

@@ -17,15 +17,24 @@ const days = [
 const startHour = 7;
 const endHour = 24;
 const slotHeight = 60;
-// Workouts and personal activities only have a start time, so give them this length.
+// Workouts and personal activities (and classes without an end time) only have a start time, so give them this length.
 const defaultLengthHours = 1;
 
-type Source = "work" | "workout" | "personal";
+type Source = "class" | "work" | "workout" | "personal" | "study" | "goal";
 
 const sourceStyles: Record<Source, { label: string; className: string }> = {
+  class: { label: "Class", className: "border-indigo-300 bg-indigo-50 text-indigo-900" },
   work: { label: "Work", className: "border-amber-300 bg-amber-50 text-amber-900" },
   workout: { label: "Workout", className: "border-emerald-300 bg-emerald-50 text-emerald-900" },
   personal: { label: "Personal", className: "border-pink-300 bg-pink-50 text-pink-900" },
+  study: { label: "Study", className: "border-sky-300 bg-sky-50 text-sky-900" },
+  goal: { label: "Goal", className: "border-violet-300 bg-violet-50 text-violet-900" },
+};
+
+// What the optimize-schedule Edge Function returns.
+type AiPlan = {
+  summary: string;
+  blocks: { day: string; start: string; end: string; title: string; category: Source }[];
 };
 
 type ScheduleItem = {
@@ -126,6 +135,9 @@ function layoutDay(items: (ScheduleItem & { start: number; end: number })[]) {
 export function SchedulePage() {
   const [items, setItems] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [aiPlan, setAiPlan] = useState<AiPlan | null>(null);
+  const [showAi, setShowAi] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
 
   const hours = Array.from(
     { length: endHour - startHour },
@@ -134,13 +146,14 @@ export function SchedulePage() {
 
   // RLS only returns the logged-in user's rows, so no user filter is needed here.
   async function loadSchedule() {
-    const [work, workouts, personal] = await Promise.all([
+    const [classes, work, workouts, personal] = await Promise.all([
+      supabase.from("subjects").select("id, name, class_days, start_time, end_time"),
       supabase.from("work_info").select("id, job, work_days, start_time, end_time"),
       supabase.from("workouts").select("id, workout_type, preferred_day, preferred_time"),
       supabase.from("personal_activities").select("id, activity, day, time"),
     ]);
 
-    const error = work.error ?? workouts.error ?? personal.error;
+    const error = classes.error ?? work.error ?? workouts.error ?? personal.error;
     if (error) {
       toast.error("Couldn't load schedule", { description: error.message });
       setLoading(false);
@@ -148,6 +161,17 @@ export function SchedulePage() {
     }
 
     setItems([
+      // Subjects with no class days are study-only, so leave them off the grid.
+      ...(classes.data ?? [])
+        .filter((row) => row.class_days || row.start_time)
+        .map((row) => ({
+          key: `class-${row.id}`,
+          title: row.name,
+          source: "class" as const,
+          dayText: row.class_days,
+          start: toHours(row.start_time),
+          end: toHours(row.end_time),
+        })),
       ...(work.data ?? []).map((row) => ({
         key: `work-${row.id}`,
         title: row.job,
@@ -176,6 +200,25 @@ export function SchedulePage() {
     setLoading(false);
   }
 
+  // The Edge Function reads the user's data itself, so nothing needs to be sent.
+  async function optimizeSchedule() {
+    setOptimizing(true);
+    const { data, error } = await supabase.functions.invoke<AiPlan>("optimize-schedule");
+    setOptimizing(false);
+
+    if (error || !data) {
+      // The function's own error message is in the response body.
+      const body = await error?.context?.json?.().catch(() => null);
+      toast.error("Couldn't optimize schedule", {
+        description: body?.error ?? error?.message,
+      });
+      return;
+    }
+
+    setAiPlan(data);
+    setShowAi(true);
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) {
@@ -190,7 +233,24 @@ export function SchedulePage() {
   const byDay: (ScheduleItem & { start: number; end: number })[][] = days.map(() => []);
   const unplaced: { item: ScheduleItem; reason: string }[] = [];
 
-  for (const item of items) {
+  if (showAi && aiPlan) {
+    aiPlan.blocks.forEach((block, i) => {
+      const d = days.indexOf(block.day);
+      const start = toHours(block.start)!;
+      const end = toHours(block.end)!;
+      if (d === -1) return;
+      byDay[d].push({
+        key: `ai-${i}`,
+        title: block.title,
+        source: block.category,
+        dayText: block.day,
+        start: Math.max(start, startHour),
+        end: Math.min(end, endHour),
+      });
+    });
+  }
+
+  for (const item of showAi ? [] : items) {
     const dayIndexes = parseDays(item.dayText);
     if (!item.dayText) unplaced.push({ item, reason: "No day set" });
     else if (dayIndexes.length === 0)
@@ -232,10 +292,30 @@ export function SchedulePage() {
           </p>
         </div>
 
-        <Button onClick={() => window.print()} variant="outline">
-          Print Schedule
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {aiPlan && (
+            <Button onClick={() => setShowAi(!showAi)} variant="outline">
+              {showAi ? "Show My Schedule" : "Show AI Schedule"}
+            </Button>
+          )}
+          <Button onClick={optimizeSchedule} disabled={optimizing || loading}>
+            {optimizing ? "Optimizing..." : aiPlan ? "Re-optimize" : "Optimize with AI"}
+          </Button>
+          <Button onClick={() => window.print()} variant="outline">
+            Print Schedule
+          </Button>
+        </div>
       </div>
+
+      {showAi && aiPlan && (
+        <section className="mt-6 rounded-xl border border-sky-200 bg-sky-50/50 p-4 text-sm">
+          <p className="font-semibold">AI-optimized schedule</p>
+          <p className="mt-1 text-muted-foreground">{aiPlan.summary}</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            This is a suggestion — nothing has been saved or changed.
+          </p>
+        </section>
+      )}
 
       <div className="mt-6 flex flex-wrap gap-3 text-xs">
         {(Object.keys(sourceStyles) as Source[]).map((source) => (
@@ -335,7 +415,7 @@ export function SchedulePage() {
         </div>
       </section>
 
-      {loading ? (
+      {showAi ? null : loading ? (
         <p className="mt-4 text-sm text-muted-foreground">Loading...</p>
       ) : items.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">

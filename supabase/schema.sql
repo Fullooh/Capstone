@@ -1,7 +1,8 @@
 -- Full schema for every page: Signup, School, Work, Notes, Goals, Workout and Personal.
 -- (Brandon) I applied the original version to the shared Supabase project on 2026-10-07.
 -- Since then: per-class columns on subjects (2026-10-12), and goals, workouts and
--- personal_activities (2026-10-13), all already applied. Only migrations/2026-10-13_drop_school_info.sql is separate.
+-- personal_activities (2026-10-13), all already applied. Separate: migrations/2026-10-13_drop_school_info.sql
+-- and migrations/2026-10-19_subject_class_times.sql (class days/times on subjects).
 
 
 -- PROFILES: first/last name from the Signup page
@@ -39,7 +40,7 @@ select id, raw_user_meta_data ->> 'first_name', raw_user_meta_data ->> 'last_nam
 from auth.users
 on conflict (id) do nothing;
 
--- SUBJECTS: classes on the School page, each with its own grade/difficulty/study time (many per user)
+-- SUBJECTS: classes on the School page, each with its own grade/difficulty/study time and meeting days/times (many per user)
 create table if not exists public.subjects (
   id bigint generated always as identity primary key,
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -47,6 +48,9 @@ create table if not exists public.subjects (
   grade numeric check (grade >= 0),
   difficulty text check (difficulty in ('low', 'medium', 'high')),
   study_hours numeric check (study_hours >= 0),
+  class_days text,
+  start_time time,
+  end_time time,
   notes text,
   created_at timestamptz not null default now()
 );
