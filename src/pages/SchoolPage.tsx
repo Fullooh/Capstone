@@ -237,89 +237,92 @@ export function SchoolPage() {
           </div>
         </section>
 
-        <section className="mt-8 scroll-mt-6" id="class-form">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold">
-              {editing ? "Edit class details" : "Manage your classes"}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {editing
-                ? "Update the information for this subject."
-                : "Add a subject and record the details that help you plan your study time."}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
-            <ClassForm
-              key={editing ? `edit-${editing.id}` : `new-${formKey}`}
-              initial={editing}
-              saving={saving}
-              onSubmit={handleSave}
-              onCancel={() => setEditing(null)}
-            />
-          </div>
-        </section>
-
-        <section className="mt-10">
-          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
-            <div>
-              <h2 className="text-xl font-bold tracking-tight">
-                Your classes
+        {/* Form on the left, class list on the right; stacks below lg. */}
+        <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:items-start">
+          <section className="scroll-mt-6" id="class-form">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold">
+                {editing ? "Edit class details" : "Manage your classes"}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                View and manage the subjects in your academic plan.
+                {editing
+                  ? "Update the information for this subject."
+                  : "Add a subject and record the details that help you plan your study time."}
               </p>
             </div>
 
-            <p className="text-sm font-medium text-muted-foreground">
-              {subjects.length}{" "}
-              {subjects.length === 1 ? "class" : "classes"}
-            </p>
-          </div>
-
-          {loading ? (
-            <div
-              className="mt-5 rounded-2xl border bg-card p-10 text-center"
-              role="status"
-            >
-              <p className="font-medium">Loading your classes...</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Retrieving your academic information.
-              </p>
+            <div className="rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
+              <ClassForm
+                key={editing ? `edit-${editing.id}` : `new-${formKey}`}
+                initial={editing}
+                saving={saving}
+                onSubmit={handleSave}
+                onCancel={() => setEditing(null)}
+              />
             </div>
-          ) : subjects.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-dashed bg-card px-6 py-12 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-3xl">
-                📖
+          </section>
+
+          <section>
+            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Your classes
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  View and manage the subjects in your academic plan.
+                </p>
               </div>
-              <h3 className="mt-4 text-lg font-semibold">
-                Start building your academic plan
-              </h3>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                You haven't added any classes yet. Add your first subject to
-                start tracking grades, difficulty, and study hours.
+
+              <p className="text-sm font-medium text-muted-foreground">
+                {subjects.length}{" "}
+                {subjects.length === 1 ? "class" : "classes"}
               </p>
-              <a
-                href="#class-form"
-                className="mt-5 inline-flex items-center justify-center rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
-              >
-                Add your first class
-              </a>
             </div>
-          ) : (
-            <ul className="mt-5 grid gap-4 sm:grid-cols-2">
-              {subjects.map((subject) => (
-                <ClassCard
-                  key={subject.id}
-                  subject={subject}
-                  deleting={deletingId === subject.id}
-                  onEdit={() => handleEdit(subject)}
-                  onDelete={() => handleDelete(subject)}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
+
+            {loading ? (
+              <div
+                className="mt-5 rounded-2xl border bg-card p-10 text-center"
+                role="status"
+              >
+                <p className="font-medium">Loading your classes...</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Retrieving your academic information.
+                </p>
+              </div>
+            ) : subjects.length === 0 ? (
+              <div className="mt-5 rounded-2xl border border-dashed bg-card px-6 py-12 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-3xl">
+                  📖
+                </div>
+                <h3 className="mt-4 text-lg font-semibold">
+                  Start building your academic plan
+                </h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                  You haven't added any classes yet. Add your first subject to
+                  start tracking grades, difficulty, and study hours.
+                </p>
+                <a
+                  href="#class-form"
+                  className="mt-5 inline-flex items-center justify-center rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                >
+                  Add your first class
+                </a>
+              </div>
+            ) : (
+              <ul className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                {subjects.map((subject) => (
+                  <ClassCard
+                    key={subject.id}
+                    subject={subject}
+                    deleting={deletingId === subject.id}
+                    onEdit={() => handleEdit(subject)}
+                    onDelete={() => handleDelete(subject)}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
 
         <footer className="mt-12 border-t py-6 text-center text-xs text-muted-foreground">
           My Schedule 360 · Balance your life. Manage your time.
