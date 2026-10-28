@@ -3,16 +3,18 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { Link, navigate } from "@/lib/router";
 import { Button } from "@/components/ui/button";
-
-const days = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+import {
+  addDays,
+  days,
+  formatTime,
+  layoutDay,
+  parseDays,
+  startOfWeek,
+  toDateKey,
+  toHours,
+  type ScheduleItem,
+  type Source,
+} from "@/lib/schedule";
 
 const startHour = 7;
 const endHour = 24;
@@ -20,16 +22,16 @@ const slotHeight = 60;
 // Workouts and personal activities (and classes without an end time) only have a start time, so give them this length.
 const defaultLengthHours = 1;
 
-type Source = "class" | "work" | "workout" | "personal" | "study" | "goal";
-
-const sourceStyles: Record<Source, { label: string; className: string }> = {
-  class: { label: "Class", className: "border-indigo-300 bg-indigo-50 text-indigo-900" },
-  work: { label: "Work", className: "border-amber-300 bg-amber-50 text-amber-900" },
-  workout: { label: "Workout", className: "border-emerald-300 bg-emerald-50 text-emerald-900" },
-  personal: { label: "Personal", className: "border-pink-300 bg-pink-50 text-pink-900" },
-  study: { label: "Study", className: "border-sky-300 bg-sky-50 text-sky-900" },
-  goal: { label: "Goal", className: "border-violet-300 bg-violet-50 text-violet-900" },
+const sourceStyles: Record<Source, { label: string; className: string; href: string }> = {
+  class: { label: "Class", className: "border-indigo-300 bg-indigo-50 text-indigo-900", href: "/school" },
+  work: { label: "Work", className: "border-amber-300 bg-amber-50 text-amber-900", href: "/work" },
+  workout: { label: "Workout", className: "border-emerald-300 bg-emerald-50 text-emerald-900", href: "/workout" },
+  personal: { label: "Personal", className: "border-pink-300 bg-pink-50 text-pink-900", href: "/personal" },
+  study: { label: "Study", className: "border-sky-300 bg-sky-50 text-sky-900", href: "/school" },
+  goal: { label: "Goal", className: "border-violet-300 bg-violet-50 text-violet-900", href: "/goals" },
 };
+
+const gridColumns = { gridTemplateColumns: "72px repeat(7, minmax(0, 1fr))" };
 
 // What the optimize-schedule Edge Function returns.
 type AiPlan = {
@@ -37,107 +39,22 @@ type AiPlan = {
   blocks: { day: string; start: string; end: string; title: string; category: Source }[];
 };
 
-type ScheduleItem = {
-  key: string;
-  title: string;
-  source: Source;
-  dayText: string | null;
-  start: number | null; // hours since midnight, e.g. 13.5 = 1:30 PM
-  end: number | null;
-};
+type Deadline = { id: number; goal: string; priority: string | null; deadline: string };
 
-type PlacedItem = ScheduleItem & {
-  start: number;
-  end: number;
-  lane: number;
-  lanes: number;
-};
-
-function formatTime(hour: number) {
-  const h = Math.floor(hour) % 24;
-  const minutes = Math.round((hour - Math.floor(hour)) * 60);
-  const suffix = h >= 12 ? "PM" : "AM";
-  const displayHour = h % 12 || 12;
-
-  return `${displayHour}:${String(minutes).padStart(2, "0")} ${suffix}`;
-}
-
-// Postgres returns times as "HH:MM:SS"; turn them into hours since midnight.
-function toHours(time: string | null) {
-  if (!time) return null;
-  const [h, m] = time.split(":").map(Number);
-  return h + m / 60;
-}
-
-// "mon", "tues", "thurs", "friday"... -> index into `days`. The word must be the start
-// of a day name and at least 3 letters, so words like "the", "thru" or "we" don't count.
-function dayIndex(word: string) {
-  if (word.length < 3) return -1;
-  return days.findIndex((day) => day.toLowerCase().startsWith(word));
-}
-
-// Days are typed as free text, so read them loosely:
-// "Monday", "mon", "Mon/Wed/Fri", "Monday - Friday", "weekdays", "weekends", "daily".
-function parseDays(text: string | null) {
-  if (!text) return [];
-  const value = text.toLowerCase();
-  const result = new Set<number>();
-
-  if (/\b(daily|every ?day|all week)\b/.test(value)) return [0, 1, 2, 3, 4, 5, 6];
-  if (/\bweekdays?\b/.test(value)) [0, 1, 2, 3, 4].forEach((d) => result.add(d));
-  if (/\bweekends?\b/.test(value)) [5, 6].forEach((d) => result.add(d));
-
-  // Ranges like "Mon-Fri" or "Monday to Thursday"
-  const rangePattern = /([a-z]+)\s*(?:-|–|to|through|thru)\s*([a-z]+)/g;
-  for (const [, from, to] of value.matchAll(rangePattern)) {
-    const a = dayIndex(from);
-    const b = dayIndex(to);
-    if (a === -1 || b === -1) continue;
-    for (let d = a; d !== (b + 1) % 7; d = (d + 1) % 7) result.add(d);
-  }
-
-  for (const word of value.split(/[^a-z]+/)) {
-    const d = dayIndex(word);
-    if (d !== -1) result.add(d);
-  }
-
-  return [...result].sort();
-}
-
-// Side-by-side lanes for items that overlap on the same day.
-function layoutDay(items: (ScheduleItem & { start: number; end: number })[]) {
-  const sorted = [...items].sort((a, b) => a.start - b.start || a.end - b.end);
-  const placed: PlacedItem[] = [];
-  let group: PlacedItem[] = [];
-  let groupEnd = -1;
-  let laneEnds: number[] = [];
-
-  const closeGroup = () => {
-    group.forEach((item) => (item.lanes = laneEnds.length));
-    placed.push(...group);
-    group = [];
-    laneEnds = [];
-  };
-
-  for (const item of sorted) {
-    if (item.start >= groupEnd) closeGroup();
-    let lane = laneEnds.findIndex((end) => end <= item.start);
-    if (lane === -1) lane = laneEnds.length;
-    laneEnds[lane] = item.end;
-    groupEnd = Math.max(groupEnd, item.end);
-    group.push({ ...item, lane, lanes: 1 });
-  }
-  closeGroup();
-
-  return placed;
+function formatHours(hours: number) {
+  return `${Math.round(hours * 10) / 10}h`;
 }
 
 export function SchedulePage() {
   const [items, setItems] = useState<ScheduleItem[]>([]);
+  const [deadlines, setDeadlines] = useState<Deadline[]>([]);
+  const [studyTarget, setStudyTarget] = useState(0);
   const [loading, setLoading] = useState(true);
   const [aiPlan, setAiPlan] = useState<AiPlan | null>(null);
   const [showAi, setShowAi] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [now, setNow] = useState(() => new Date());
 
   const hours = Array.from(
     { length: endHour - startHour },
@@ -146,20 +63,26 @@ export function SchedulePage() {
 
   // RLS only returns the logged-in user's rows, so no user filter is needed here.
   async function loadSchedule() {
-    const [classes, work, workouts, personal] = await Promise.all([
-      supabase.from("subjects").select("id, name, class_days, start_time, end_time"),
+    const [classes, work, workouts, personal, goals] = await Promise.all([
+      supabase.from("subjects").select("id, name, class_days, start_time, end_time, study_hours"),
       supabase.from("work_info").select("id, job, work_days, start_time, end_time"),
       supabase.from("workouts").select("id, workout_type, preferred_day, preferred_time"),
       supabase.from("personal_activities").select("id, activity, day, time"),
+      supabase.from("goals").select("id, goal, priority, deadline").not("deadline", "is", null),
     ]);
 
-    const error = classes.error ?? work.error ?? workouts.error ?? personal.error;
+    const error =
+      classes.error ?? work.error ?? workouts.error ?? personal.error ?? goals.error;
     if (error) {
       toast.error("Couldn't load schedule", { description: error.message });
       setLoading(false);
       return;
     }
 
+    setStudyTarget(
+      (classes.data ?? []).reduce((sum, row) => sum + (Number(row.study_hours) || 0), 0),
+    );
+    setDeadlines((goals.data ?? []) as Deadline[]);
     setItems([
       // Subjects with no class days are study-only, so leave them off the grid.
       ...(classes.data ?? [])
@@ -229,6 +152,25 @@ export function SchedulePage() {
     });
   }, []);
 
+  // Keep the "now" line and today's highlight current.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // The recurring schedule is the same every week; the dates only matter for goal deadlines.
+  const weekStart = addDays(startOfWeek(now), weekOffset * 7);
+  const weekDates = days.map((_, d) => addDays(weekStart, d));
+  const weekKeys = weekDates.map(toDateKey);
+  const todayIndex = weekKeys.indexOf(toDateKey(now));
+  const nowHour = now.getHours() + now.getMinutes() / 60;
+  const weekLabel = `${weekDates[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${weekDates[6].toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+
+  const deadlinesByDay = weekKeys.map((key) =>
+    deadlines.filter((goal) => goal.deadline === key),
+  );
+  const hasDeadlinesThisWeek = deadlinesByDay.some((list) => list.length > 0);
+
   // Split items into ones that fit on the grid (per day) and ones that don't, with a reason.
   const byDay: (ScheduleItem & { start: number; end: number })[][] = days.map(() => []);
   const unplaced: { item: ScheduleItem; reason: string }[] = [];
@@ -272,6 +214,12 @@ export function SchedulePage() {
   }
 
   const placedByDay = byDay.map(layoutDay);
+
+  // Hours per category for the week, shown next to each legend chip.
+  const totals = {} as Record<Source, number>;
+  for (const item of byDay.flat()) {
+    totals[item.source] = (totals[item.source] ?? 0) + (item.end - item.start);
+  }
 
   return (
     <main className="mx-auto max-w-[1600px] px-4 py-10 sm:px-6">
@@ -317,47 +265,97 @@ export function SchedulePage() {
         </section>
       )}
 
-      <div className="mt-6 flex flex-wrap gap-3 text-xs">
-        {(Object.keys(sourceStyles) as Source[]).map((source) => (
-          <span
-            key={source}
-            className={`rounded-md border px-2 py-1 font-medium ${sourceStyles[source].className}`}
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap gap-3 text-xs">
+          {(Object.keys(sourceStyles) as Source[]).map((source) => (
+            <span
+              key={source}
+              className={`rounded-md border px-2 py-1 font-medium ${sourceStyles[source].className}`}
+            >
+              {sourceStyles[source].label}
+              {totals[source] ? ` · ${formatHours(totals[source])}` : ""}
+            </span>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 print:hidden">
+          <Button variant="outline" size="sm" onClick={() => setWeekOffset(weekOffset - 1)}>
+            ←
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setWeekOffset(0)}
+            disabled={weekOffset === 0}
           >
-            {sourceStyles[source].label}
-          </span>
-        ))}
+            This week
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setWeekOffset(weekOffset + 1)}>
+            →
+          </Button>
+          <span className="ml-1 text-sm font-medium">{weekLabel}</span>
+        </div>
       </div>
+
+      {!showAi && studyTarget > 0 && !totals.study && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Your classes call for {formatHours(studyTarget)} of study time a week,
+          but none is scheduled yet. Try <span className="font-medium">Optimize with AI</span> to
+          fit it in.
+        </p>
+      )}
 
       <section className="mt-4 overflow-hidden rounded-xl border bg-card">
         <div className="overflow-x-auto">
           <div className="min-w-[1050px]">
             {/* Day headers */}
-            <div
-              className="grid border-b bg-muted/40"
-              style={{
-                gridTemplateColumns: "72px repeat(7, minmax(0, 1fr))",
-              }}
-            >
+            <div className="grid border-b bg-muted/40" style={gridColumns}>
               <div className="border-r p-3 text-xs text-muted-foreground">
                 Time
               </div>
 
-              {days.map((day) => (
+              {days.map((day, d) => (
                 <div
                   key={day}
-                  className="border-r p-3 text-center text-sm font-semibold last:border-r-0"
+                  className={`border-r p-3 text-center last:border-r-0 ${d === todayIndex ? "bg-primary/10" : ""}`}
                 >
-                  {day}
+                  <p className="text-sm font-semibold">{day}</p>
+                  <p
+                    className={`text-xs ${d === todayIndex ? "font-semibold text-primary" : "text-muted-foreground"}`}
+                  >
+                    {weekDates[d].toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    {d === todayIndex && " · Today"}
+                  </p>
                 </div>
               ))}
             </div>
 
-            <div
-              className="grid"
-              style={{
-                gridTemplateColumns: "72px repeat(7, minmax(0, 1fr))",
-              }}
-            >
+            {/* Goal deadlines for this week */}
+            {hasDeadlinesThisWeek && (
+              <div className="grid border-b" style={gridColumns}>
+                <div className="border-r px-2 py-2 text-right text-xs text-muted-foreground">
+                  Due
+                </div>
+
+                {deadlinesByDay.map((list, d) => (
+                  <div key={d} className="grid gap-1 border-r p-1 last:border-r-0">
+                    {list.map((goal) => (
+                      <Link
+                        key={goal.id}
+                        href="/goals"
+                        title={`Goal deadline: ${goal.goal}`}
+                        className={`truncate rounded-md border px-2 py-1 text-xs font-medium ${sourceStyles.goal.className}`}
+                      >
+                        🎯 {goal.goal}
+                        {goal.priority === "high" && " (!)"}
+                      </Link>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="grid" style={gridColumns}>
               {/* Time labels */}
               <div className="border-r">
                 {hours.map((hour) => (
@@ -380,7 +378,7 @@ export function SchedulePage() {
               {days.map((day, d) => (
                 <div
                   key={day}
-                  className="relative border-r last:border-r-0"
+                  className={`relative border-r last:border-r-0 ${d === todayIndex ? "bg-primary/[0.03]" : ""}`}
                 >
                   {hours.map((hour) => (
                     <div
@@ -391,10 +389,11 @@ export function SchedulePage() {
                   ))}
 
                   {placedByDay[d].map((item) => (
-                    <div
+                    <Link
                       key={item.key}
+                      href={sourceStyles[item.source].href}
                       title={`${item.title} · ${formatTime(item.start)} – ${formatTime(item.end)}`}
-                      className={`absolute overflow-hidden rounded-md border px-2 py-1 text-xs shadow-sm ${sourceStyles[item.source].className}`}
+                      className={`absolute overflow-hidden rounded-md border px-2 py-1 text-xs shadow-sm transition-shadow hover:shadow-md ${sourceStyles[item.source].className}`}
                       style={{
                         top: (item.start - startHour) * slotHeight + 1,
                         height: (item.end - item.start) * slotHeight - 2,
@@ -406,8 +405,19 @@ export function SchedulePage() {
                       <p className="opacity-80">
                         {formatTime(item.start)} – {formatTime(item.end)}
                       </p>
-                    </div>
+                    </Link>
                   ))}
+
+                  {/* Current time */}
+                  {d === todayIndex && nowHour >= startHour && nowHour < endHour && (
+                    <div
+                      className="pointer-events-none absolute inset-x-0 z-10 flex items-center print:hidden"
+                      style={{ top: (nowHour - startHour) * slotHeight }}
+                    >
+                      <span className="-ml-1 h-2 w-2 rounded-full bg-red-500" />
+                      <span className="h-0.5 flex-1 bg-red-500" />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -438,7 +448,9 @@ export function SchedulePage() {
                   >
                     {sourceStyles[item.source].label}
                   </span>
-                  <span className="font-medium">{item.title}</span>
+                  <Link href={sourceStyles[item.source].href} className="font-medium hover:underline">
+                    {item.title}
+                  </Link>
                   <span className="text-muted-foreground">· {reason}</span>
                 </li>
               ))}
