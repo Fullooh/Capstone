@@ -132,25 +132,28 @@ export function PersonalPage() {
       label: "Total Activities",
       value: activities.length,
       icon: "🌿",
-      description: "Activities in your list",
+      color: "bg-blue-50 text-blue-700",
+description: "Activities in your list",
     },
     {
       label: "Scheduled",
       value: scheduledActivities,
       icon: "📅",
-      description: "With a day or time",
+      color: "bg-emerald-50 text-emerald-700",
+description: "With a day or time",
     },
     {
       label: "With Notes",
       value: activitiesWithNotes,
       icon: "📝",
-      description: "With extra details",
+      color: "bg-violet-50 text-violet-700",
+description: "With extra details",
     },
   ];
 
   return (
     <main className="min-h-screen bg-muted/30">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-foreground"
@@ -159,18 +162,19 @@ export function PersonalPage() {
           Back to Dashboard
         </Link>
 
-        <header className="mt-5 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-pink-100 text-3xl">
+        <header className="mt-6 overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+            <div className="flex items-start gap-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-pink-100 text-3xl">
               🌿
             </div>
 
             <div className="flex-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">
+              <p className="text-sm font-medium text-primary">
                 Your Personal Time
               </p>
 
-              <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+              <h1 className="mt-1 text-3xl font-bold tracking-tight">
                 Personal
               </h1>
 
@@ -180,25 +184,29 @@ export function PersonalPage() {
               </p>
             </div>
 
+            </div>
+
             <a
               href="#personal-form"
-              className="inline-flex shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
             >
               + Add Activity
             </a>
           </div>
         </header>
 
-        <section
-          aria-label="Personal summary"
-          className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-        >
+        <section aria-label="Personal summary" className="mt-8">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">Personal overview</h2>
+            <p className="mt-1 text-sm text-muted-foreground">A quick look at your personal time and planned activities.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-xl border bg-card p-5 shadow-sm"
+              className="rounded-2xl border bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">
                     {stat.label}
@@ -209,7 +217,7 @@ export function PersonalPage() {
                   </p>
                 </div>
 
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-pink-50 text-xl">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl ${stat.color}`}>
                   {stat.icon}
                 </div>
               </div>
@@ -219,11 +227,13 @@ export function PersonalPage() {
               </p>
             </div>
           ))}
+          </div>
         </section>
 
+        <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:items-start">
         <section
           id="personal-form"
-          className="mt-8 scroll-mt-6 rounded-2xl border bg-card p-6 shadow-sm sm:p-8"
+          className="scroll-mt-6 rounded-2xl border bg-card p-5 shadow-sm sm:p-7"
         >
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-pink-700">
@@ -350,7 +360,7 @@ export function PersonalPage() {
           </form>
         </section>
 
-        <section className="mt-8 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
+        <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-pink-700">
@@ -461,8 +471,10 @@ export function PersonalPage() {
           )}
         </section>
 
-        <footer className="py-8 text-center text-sm text-muted-foreground">
-          Take care of yourself. Make time for what matters.
+        </div>
+
+        <footer className="mt-12 border-t py-6 text-center text-xs text-muted-foreground">
+          My Schedule 360 · Balance your life. Manage your time.
         </footer>
       </div>
     </main>

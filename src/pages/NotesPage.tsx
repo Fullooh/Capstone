@@ -1,3 +1,4 @@
+
 import { useEffect, useState, type SubmitEvent } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -12,7 +13,6 @@ type Note = {
   created_at: string;
 };
 
-// Matches the section colors on the dashboard.
 const categoryStyles: Record<string, string> = {
   general: "bg-gray-100 text-gray-700",
   school: "bg-blue-50 text-blue-700",
@@ -27,7 +27,6 @@ export function NotesPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  // RLS only returns the logged-in user's rows, so no user filter is needed here.
   async function loadNotes() {
     const { data, error } = await supabase
       .from("notes")
@@ -39,7 +38,7 @@ export function NotesPage() {
         description: error.message,
       });
     } else {
-      setNotes(data);
+      setNotes(data ?? []);
     }
 
     setLoading(false);
@@ -61,9 +60,9 @@ export function NotesPage() {
 
     const form = event.currentTarget;
     const data = new FormData(form);
-    const title = (data.get("title") as string).trim();
-    const category = data.get("category") as string;
-    const body = (data.get("body") as string).trim();
+    const title = String(data.get("title") ?? "").trim();
+    const category = String(data.get("category") ?? "general");
+    const body = String(data.get("body") ?? "").trim();
 
     if (!title) {
       toast.error("Please add a title");
@@ -72,9 +71,11 @@ export function NotesPage() {
 
     setSaving(true);
 
-    const { error } = await supabase
-      .from("notes")
-      .insert({ title, category, body: body || null });
+    const { error } = await supabase.from("notes").insert({
+      title,
+      category,
+      body: body || null,
+    });
 
     setSaving(false);
 
@@ -93,7 +94,10 @@ export function NotesPage() {
   async function handleDelete(id: number) {
     setDeletingId(id);
 
-    const { error } = await supabase.from("notes").delete().eq("id", id);
+    const { error } = await supabase
+      .from("notes")
+      .delete()
+      .eq("id", id);
 
     setDeletingId(null);
 
@@ -105,7 +109,6 @@ export function NotesPage() {
     }
 
     setNotes((current) => current.filter((note) => note.id !== id));
-
     toast.success("Note deleted");
   }
 
@@ -123,19 +126,19 @@ export function NotesPage() {
       label: "Total Notes",
       value: notes.length,
       icon: "📝",
-      description: "Notes you've saved",
+      description: "Notes saved in your space",
     },
     {
       label: "Categories",
       value: categoriesUsed,
       icon: "🗂️",
-      description: "Areas your notes cover",
+      description: "Different categories in use",
     },
     {
-      label: "This Week",
+      label: "Added This Week",
       value: addedThisWeek,
-      icon: "🗓️",
-      description: "Added in the last 7 days",
+      icon: "📅",
+      description: "Notes created in the last seven days",
     },
   ];
 
@@ -152,13 +155,13 @@ export function NotesPage() {
 
         <header className="mt-5 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-3xl">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-3xl">
               📝
             </div>
 
             <div className="flex-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-700">
-                Your Reminders
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-700">
+                Your Personal Workspace
               </p>
 
               <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
@@ -166,8 +169,8 @@ export function NotesPage() {
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-                Keep important reminders and information in one place, sorted
-                by the part of your life they belong to.
+                Keep important reminders, ideas, school notes, work details,
+                and personal information organized in one place.
               </p>
             </div>
 
@@ -200,7 +203,7 @@ export function NotesPage() {
                   </p>
                 </div>
 
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-xl">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-xl">
                   {stat.icon}
                 </div>
               </div>
@@ -212,64 +215,49 @@ export function NotesPage() {
           ))}
         </section>
 
-        <section
-          id="note-form"
-          className="mt-8 scroll-mt-6 rounded-2xl border bg-card p-6 shadow-sm sm:p-8"
-        >
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-orange-700">
-              Write it down
-            </p>
+        <div className="mt-8 grid items-start gap-8 lg:grid-cols-[0.85fr_1.15fr]">
+          <section id="note-form">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold">Create a note</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Save an idea or reminder so you can find it later.
+              </p>
+            </div>
 
-            <h2 className="mt-1 text-xl font-bold">Create a Note</h2>
-
-            <p className="mt-2 text-sm text-muted-foreground">
-              Give your note a title, pick where it belongs, and add the
-              details.
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="mt-7 space-y-6">
-            <div className="rounded-xl border p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50 text-xl">
-                  🏷️
-                </div>
-                <div>
-                  <h3 className="font-semibold">Note Details</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Name your note and choose a category.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-5 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="noteTitle" className="text-sm font-medium">
-                    Note Title <span className="text-destructive">*</span>
+            <div className="rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="note-title"
+                    className="text-sm font-medium"
+                  >
+                    Note title
                   </label>
 
                   <input
-                    id="noteTitle"
+                    id="note-title"
                     name="title"
                     type="text"
+                    placeholder="e.g. Data Mining homework"
                     required
-                    maxLength={200}
-                    placeholder="e.g. Important assignment"
-                    className="mt-2 w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                    maxLength={150}
+                    className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-primary"
                   />
                 </div>
 
-                <div>
-                  <label htmlFor="noteCategory" className="text-sm font-medium">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="note-category"
+                    className="text-sm font-medium"
+                  >
                     Category
                   </label>
 
                   <select
-                    id="noteCategory"
+                    id="note-category"
                     name="category"
                     defaultValue="general"
-                    className="mt-2 w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="general">General</option>
                     <option value="school">School</option>
@@ -278,153 +266,137 @@ export function NotesPage() {
                     <option value="goal">Goal</option>
                   </select>
                 </div>
-              </div>
-            </div>
 
-            <div className="rounded-xl border p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-xl">
-                  📝
+                <div className="space-y-2">
+                  <label
+                    htmlFor="note-body"
+                    className="text-sm font-medium"
+                  >
+                    Details
+                  </label>
+
+                  <textarea
+                    id="note-body"
+                    name="body"
+                    rows={5}
+                    placeholder="Write your note or reminder here..."
+                    className="w-full resize-y rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-primary"
+                  />
                 </div>
-                <div>
-                  <h3 className="font-semibold">Note</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Write down whatever you need to remember.
-                  </p>
-                </div>
+
+                <Button type="submit" disabled={saving} className="w-full">
+                  {saving ? "Saving note..." : "Save Note"}
+                </Button>
+              </form>
+            </div>
+          </section>
+
+          <section>
+            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+              <div>
+                <h2 className="text-lg font-semibold">Your notes</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  View and manage your saved information.
+                </p>
               </div>
 
-              <label htmlFor="note" className="sr-only">
-                Note
-              </label>
-
-              <textarea
-                id="note"
-                name="body"
-                rows={8}
-                maxLength={5000}
-                placeholder="Write your note here..."
-                className="mt-5 w-full resize-y rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-
-            <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:justify-end">
-              <Button type="reset" variant="outline" disabled={saving}>
-                Clear Form
-              </Button>
-
-              <Button type="submit" disabled={saving}>
-                {saving ? "Saving..." : "Save Note"}
-              </Button>
-            </div>
-          </form>
-        </section>
-
-        <section className="mt-8 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-orange-700">
-                Your reminders
-              </p>
-
-              <h2 className="mt-1 text-xl font-bold">Your Notes</h2>
-
-              <p className="mt-1 text-sm text-muted-foreground">
-                Look back over your notes and remove anything you no longer
-                need.
+              <p className="text-sm font-medium text-muted-foreground">
+                {notes.length} {notes.length === 1 ? "note" : "notes"}
               </p>
             </div>
 
-            <span className="text-sm text-muted-foreground">
-              {loading
-                ? "Loading notes..."
-                : `${notes.length} ${notes.length === 1 ? "note" : "notes"}`}
-            </span>
-          </div>
+            {loading ? (
+              <div className="mt-5 rounded-2xl border bg-card p-10 text-center">
+                <p className="font-medium">Loading your notes...</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Retrieving your saved information.
+                </p>
+              </div>
+            ) : notes.length === 0 ? (
+              <div className="mt-5 rounded-2xl border border-dashed bg-card px-6 py-12 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-3xl">
+                  🗒️
+                </div>
 
-          {loading ? (
-            <div className="mt-6 space-y-3">
-              {[1, 2, 3].map((item) => (
-                <div
-                  key={item}
-                  className="h-24 animate-pulse rounded-xl bg-muted"
-                />
-              ))}
-            </div>
-          ) : notes.length === 0 ? (
-            <div className="mt-6 rounded-xl border border-dashed px-5 py-12 text-center">
-              <div className="text-4xl">📝</div>
-              <h3 className="mt-4 font-semibold">No notes yet</h3>
-              <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
-                Create your first note above to keep important reminders in
-                one place.
-              </p>
+                <h3 className="mt-4 text-lg font-semibold">
+                  Start your notes collection
+                </h3>
 
-              <a
-                href="#note-form"
-                className="mt-5 inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted"
-              >
-                Write your first note
-              </a>
-            </div>
-          ) : (
-            <ul className="mt-6 grid gap-4 sm:grid-cols-2">
-              {notes.map((note) => (
-                <li
-                  key={note.id}
-                  className="flex min-w-0 flex-col rounded-xl border p-5 transition hover:shadow-sm"
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                  You haven't saved any notes yet. Create your first note to
+                  keep your reminders, ideas, and important details organized.
+                </p>
+
+                <a
+                  href="#note-form"
+                  className="mt-5 inline-flex items-center justify-center rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-xl">
-                      📝
-                    </div>
+                  Create your first note
+                </a>
+              </div>
+            ) : (
+              <ul className="mt-5 space-y-4">
+                {notes.map((note) => (
+                  <li
+                    key={note.id}
+                    className="rounded-2xl border bg-card p-5 shadow-sm transition hover:shadow-md sm:p-6"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="break-words text-base font-semibold">
+                            {note.title}
+                          </h3>
 
-                    <div className="min-w-0 flex-1">
-                      <h3 className="break-words font-semibold">
-                        {note.title}
-                      </h3>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                              categoryStyles[note.category] ??
+                              categoryStyles.general
+                            }`}
+                          >
+                            {note.category.charAt(0).toUpperCase() +
+                              note.category.slice(1)}
+                          </span>
+                        </div>
 
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${
-                            categoryStyles[note.category] ?? categoryStyles.general
-                          }`}
-                        >
-                          {note.category}
-                        </span>
+                        {note.body && (
+                          <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+                            {note.body}
+                          </p>
+                        )}
 
-                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                          🗓️ {new Date(note.created_at).toLocaleDateString()}
-                        </span>
+                        <p className="mt-4 text-xs text-muted-foreground">
+                          Created{" "}
+                          {new Date(note.created_at).toLocaleDateString(
+                            undefined,
+                            {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            }
+                          )}
+                        </p>
                       </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={deletingId === note.id}
+                        onClick={() => handleDelete(note.id)}
+                        className="shrink-0"
+                      >
+                        {deletingId === note.id ? "Deleting..." : "Delete"}
+                      </Button>
                     </div>
-                  </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
 
-                  {note.body && (
-                    <p className="mt-4 flex-1 whitespace-pre-wrap break-words border-t pt-4 text-sm leading-6 text-muted-foreground">
-                      {note.body}
-                    </p>
-                  )}
-
-                  <div className="mt-4 flex justify-end border-t pt-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={deletingId === note.id}
-                      onClick={() => handleDelete(note.id)}
-                    >
-                      {deletingId === note.id ? "Deleting..." : "Delete Note"}
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <footer className="py-8 text-center text-sm text-muted-foreground">
-          Write it down. Free up your mind.
+        <footer className="mt-12 border-t py-6 text-center text-xs text-muted-foreground">
+          My Schedule 360 · Balance your life. Manage your time.
         </footer>
       </div>
     </main>

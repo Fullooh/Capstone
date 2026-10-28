@@ -1,4 +1,3 @@
-
 import { useEffect, useState, type SubmitEvent } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -17,10 +16,8 @@ type WorkInfo = {
 
 function formatTime(time: string | null) {
   if (!time) return null;
-
   const [h, m] = time.split(":").map(Number);
   const suffix = h >= 12 ? "PM" : "AM";
-
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
@@ -58,7 +55,6 @@ export function WorkPage() {
         navigate("/login");
         return;
       }
-
       loadJobs();
     });
   }, []);
@@ -150,6 +146,9 @@ export function WorkPage() {
     },
   ];
 
+  const inputClass =
+    "mt-2 w-full rounded-md border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring";
+
   return (
     <main className="min-h-screen bg-muted/30">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10">
@@ -161,31 +160,26 @@ export function WorkPage() {
           Back to Dashboard
         </Link>
 
-        <header className="mt-5 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-3xl">
+        <header className="mt-5 rounded-xl border bg-card p-6 shadow-sm sm:p-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-3xl">
               💼
             </div>
-
             <div className="flex-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
+              <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
                 Your Professional Life
               </p>
-
-              <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+              <h1 className="mt-1 text-3xl font-bold tracking-tight">
                 Work
               </h1>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-                Organize your jobs, manage work hours, and keep your
-                professional responsibilities balanced with the rest of
-                your life.
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                Organize your jobs, manage work hours, and balance your
+                professional responsibilities with the rest of your life.
               </p>
             </div>
-
             <a
               href="#work-form"
-              className="inline-flex shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-90"
             >
               + Add Job
             </a>
@@ -197,26 +191,20 @@ export function WorkPage() {
           className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
           {stats.map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-xl border bg-card p-5 shadow-sm"
-            >
+            <div key={stat.label} className="rounded-xl border bg-card p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">
                     {stat.label}
                   </p>
-
                   <p className="mt-2 text-3xl font-bold tracking-tight">
                     {loading ? "—" : stat.value}
                   </p>
                 </div>
-
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-xl">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-xl">
                   {stat.icon}
                 </div>
               </div>
-
               <p className="mt-3 text-xs text-muted-foreground">
                 {stat.description}
               </p>
@@ -224,323 +212,228 @@ export function WorkPage() {
           ))}
         </section>
 
-        <section
-          id="work-form"
-          className="mt-8 scroll-mt-6 rounded-2xl border bg-card p-6 shadow-sm sm:p-8"
-        >
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
-              Plan your work
-            </p>
+        <div className="mt-8 grid items-start gap-6 lg:grid-cols-2">
+          <section
+            id="work-form"
+            className="scroll-mt-6 rounded-xl border bg-card p-6 shadow-sm"
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
+                Plan your work
+              </p>
+              <h2 className="mt-1 text-xl font-bold">Work Information</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Enter your workplace, schedule, and priority.
+              </p>
+            </div>
 
-            <h2 className="mt-1 text-xl font-bold">Work Information</h2>
-
-            <p className="mt-2 text-sm text-muted-foreground">
-              Enter your workplace, schedule, and the importance of your
-              work commitments.
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="mt-7 space-y-6">
-            <div className="rounded-xl border p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-xl">
-                  🏢
-                </div>
-
-                <div>
-                  <h3 className="font-semibold">Job Details</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Identify your job or workplace.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5">
+            <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+              <div className="space-y-2">
                 <label htmlFor="job" className="text-sm font-medium">
-                  Job / Workplace{" "}
-                  <span className="text-destructive">*</span>
+                  Job / Workplace <span className="text-destructive">*</span>
                 </label>
-
                 <input
                   id="job"
                   name="job"
                   type="text"
                   required
                   maxLength={150}
-                  placeholder="e.g. Retail Assistant, Internship, Office"
-                  className="mt-2 w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="e.g. Retail Assistant, Internship"
+                  className={inputClass}
                 />
               </div>
-            </div>
 
-            <div className="rounded-xl border p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-xl">
-                  📅
-                </div>
-
-                <div>
-                  <h3 className="font-semibold">Work Schedule</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Add the days and hours you usually work.
-                  </p>
-                </div>
+              <div className="space-y-2">
+                <label htmlFor="workDays" className="text-sm font-medium">
+                  Work Days
+                </label>
+                <input
+                  id="workDays"
+                  name="workDays"
+                  type="text"
+                  maxLength={150}
+                  placeholder="e.g. Monday, Wednesday, Friday"
+                  className={inputClass}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter one or multiple days.
+                </p>
               </div>
 
-              <div className="mt-5 space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="workDays" className="text-sm font-medium">
-                    Work Days
+                  <label htmlFor="workStart" className="text-sm font-medium">
+                    Start Time
                   </label>
-
                   <input
-                    id="workDays"
-                    name="workDays"
-                    type="text"
-                    maxLength={150}
-                    placeholder="e.g. Monday, Wednesday, Friday"
-                    className="mt-2 w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                    id="workStart"
+                    name="startTime"
+                    type="time"
+                    className={inputClass}
                   />
-
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    You can enter one or multiple days.
-                  </p>
                 </div>
-
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="workStart" className="text-sm font-medium">
-                      Start Time
-                    </label>
-
-                    <input
-                      id="workStart"
-                      name="startTime"
-                      type="time"
-                      className="mt-2 w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="workEnd" className="text-sm font-medium">
-                      End Time
-                    </label>
-
-                    <input
-                      id="workEnd"
-                      name="endTime"
-                      type="time"
-                      className="mt-2 w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-xl">
-                  ⭐
-                </div>
-
                 <div>
-                  <h3 className="font-semibold">Work Priority</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Choose how important this commitment is to you.
-                  </p>
+                  <label htmlFor="workEnd" className="text-sm font-medium">
+                    End Time
+                  </label>
+                  <input
+                    id="workEnd"
+                    name="endTime"
+                    type="time"
+                    className={inputClass}
+                  />
                 </div>
               </div>
 
-              <div className="mt-5">
+              <div>
                 <label htmlFor="workPriority" className="text-sm font-medium">
                   Priority Level
                 </label>
-
                 <select
                   id="workPriority"
                   name="priority"
                   defaultValue="medium"
-                  className="mt-2 w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                  className={inputClass}
                 >
                   <option value="low">Low Priority</option>
                   <option value="medium">Medium Priority</option>
                   <option value="high">High Priority</option>
                 </select>
               </div>
-            </div>
 
-            <div className="rounded-xl border p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-xl">
-                  📝
-                </div>
-
-                <div>
-                  <h3 className="font-semibold">Additional Notes</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Include details that will help you plan your time.
-                  </p>
-                </div>
+              <div>
+                <label htmlFor="workNotes" className="text-sm font-medium">
+                  Additional Notes
+                </label>
+                <textarea
+                  id="workNotes"
+                  name="notes"
+                  rows={4}
+                  maxLength={2000}
+                  placeholder="Add details to help you plan your time..."
+                  className={inputClass}
+                />
               </div>
 
-              <label htmlFor="workNotes" className="sr-only">
-                Work Notes
-              </label>
+              <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:justify-end">
+                <Button type="reset" variant="outline" disabled={saving}>
+                  Clear Form
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? "Saving..." : "Save Work Information"}
+                </Button>
+              </div>
+            </form>
+          </section>
 
-              <textarea
-                id="workNotes"
-                name="notes"
-                rows={4}
-                maxLength={2000}
-                placeholder="e.g. Flexible shifts, upcoming deadlines, or commute information..."
-                className="mt-5 w-full resize-y rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-
-            <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:justify-end">
-              <Button
-                type="reset"
-                variant="outline"
-                disabled={saving}
-              >
-                Clear Form
-              </Button>
-
-              <Button type="submit" disabled={saving}>
-                {saving ? "Saving..." : "Save Work Information"}
-              </Button>
-            </div>
-          </form>
-        </section>
-
-        <section className="mt-8 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <section className="rounded-xl border bg-card p-6 shadow-sm">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
                 Your commitments
               </p>
-
               <h2 className="mt-1 text-xl font-bold">Your Jobs</h2>
-
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-2 text-sm text-muted-foreground">
                 Review your work commitments and remove outdated entries.
               </p>
-            </div>
-
-            <span className="text-sm text-muted-foreground">
-              {loading
-                ? "Loading jobs..."
-                : `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}`}
-            </span>
-          </div>
-
-          {loading ? (
-            <div className="mt-6 space-y-3">
-              {[1, 2, 3].map((item) => (
-                <div
-                  key={item}
-                  className="h-24 animate-pulse rounded-xl bg-muted"
-                />
-              ))}
-            </div>
-          ) : jobs.length === 0 ? (
-            <div className="mt-6 rounded-xl border border-dashed px-5 py-12 text-center">
-              <div className="text-4xl">💼</div>
-
-              <h3 className="mt-4 font-semibold">No jobs added yet</h3>
-
-              <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
-                Add your first job to start organizing your work hours
-                and balancing your commitments.
+              <p className="mt-2 text-sm text-muted-foreground">
+                {loading
+                  ? "Loading jobs..."
+                  : `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}`}
               </p>
-
-              <a
-                href="#work-form"
-                className="mt-5 inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted"
-              >
-                Add your first job
-              </a>
             </div>
-          ) : (
-            <ul className="mt-6 grid gap-4 sm:grid-cols-2">
-              {jobs.map((job) => (
-                <li
-                  key={job.id}
-                  className="flex min-w-0 flex-col rounded-xl border p-5 transition hover:shadow-sm"
+
+            {loading ? (
+              <div className="mt-6 space-y-3">
+                {[1, 2, 3].map((item) => (
+                  <div key={item} className="h-24 animate-pulse rounded-lg bg-muted" />
+                ))}
+              </div>
+            ) : jobs.length === 0 ? (
+              <div className="mt-6 rounded-lg border border-dashed px-4 py-10 text-center">
+                <div className="text-4xl">💼</div>
+                <h3 className="mt-3 font-semibold">No jobs added yet</h3>
+                <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+                  Add your first job to organize your work hours and
+                  balance your commitments.
+                </p>
+                <a
+                  href="#work-form"
+                  className="mt-4 inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-xl">
-                      💼
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <h3 className="break-words font-semibold">
-                        {job.job}
-                      </h3>
-
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {job.work_days && (
-                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                            📅 {job.work_days}
-                          </span>
-                        )}
-
-                        {(job.start_time || job.end_time) && (
-                          <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
-                            🕒 {formatTime(job.start_time) || "Start not set"}
-                            {" – "}
-                            {formatTime(job.end_time) || "End not set"}
-                          </span>
-                        )}
-
-                        {!job.work_days &&
-                          !job.start_time &&
-                          !job.end_time && (
+                  Add your first job
+                </a>
+              </div>
+            ) : (
+              <ul className="mt-6 space-y-4">
+                {jobs.map((job) => (
+                  <li
+                    key={job.id}
+                    className="min-w-0 rounded-lg border p-4 transition hover:shadow-sm"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xl">
+                        💼
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="break-words font-semibold">{job.job}</h3>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {job.work_days && (
+                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                              📅 {job.work_days}
+                            </span>
+                          )}
+                          {(job.start_time || job.end_time) && (
+                            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
+                              🕒 {formatTime(job.start_time) || "Start not set"}
+                              {" – "}
+                              {formatTime(job.end_time) || "End not set"}
+                            </span>
+                          )}
+                          {!job.work_days && !job.start_time && !job.end_time && (
                             <span className="text-xs text-muted-foreground">
                               No schedule set
                             </span>
                           )}
-
-                        {job.priority && (
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${
-                              job.priority === "high"
-                                ? "bg-red-50 text-red-700"
-                                : job.priority === "low"
-                                  ? "bg-gray-100 text-gray-700"
-                                  : "bg-amber-50 text-amber-700"
-                            }`}
-                          >
-                            {job.priority} priority
-                          </span>
-                        )}
+                          {job.priority && (
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${
+                                job.priority === "high"
+                                  ? "bg-red-50 text-red-700"
+                                  : job.priority === "low"
+                                    ? "bg-gray-100 text-gray-700"
+                                    : "bg-amber-50 text-amber-700"
+                              }`}
+                            >
+                              {job.priority} priority
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {job.notes && (
-                    <p className="mt-4 flex-1 whitespace-pre-wrap break-words border-t pt-4 text-sm leading-6 text-muted-foreground">
-                      {job.notes}
-                    </p>
-                  )}
+                    {job.notes && (
+                      <p className="mt-4 whitespace-pre-wrap break-words border-t pt-3 text-sm leading-6 text-muted-foreground">
+                        {job.notes}
+                      </p>
+                    )}
 
-                  <div className="mt-4 flex justify-end border-t pt-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={deletingId === job.id}
-                      onClick={() => handleDelete(job.id)}
-                    >
-                      {deletingId === job.id ? "Deleting..." : "Delete Job"}
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                    <div className="mt-4 flex justify-end border-t pt-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={deletingId === job.id}
+                        onClick={() => handleDelete(job.id)}
+                      >
+                        {deletingId === job.id ? "Deleting..." : "Delete Job"}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
 
         <footer className="py-8 text-center text-sm text-muted-foreground">
           Make time for your work. Make time for your life.
