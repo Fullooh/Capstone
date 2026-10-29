@@ -22,6 +22,24 @@ function json(body: unknown, status = 200) {
 }
 
 type Block = { day: string; start: string; end: string; title: string; category: string };
+type BlockedRange = { day: string; start: number; end: number };
+
+const toHours = (time: string) => Number(time.slice(0, 2)) + Number(time.slice(3, 5)) / 60;
+const toTime = (hour: number) => (hour >= 24 ? "23:59" : `${String(hour).padStart(2, "0")}:00`);
+
+// Blocked hours are stored one row per hour; merge neighbors so the AI sees "Monday 22:00-23:59".
+function mergeBlocked(rows: { day: string; hour: number }[]): BlockedRange[] {
+  const ranges: BlockedRange[] = [];
+  for (const day of days) {
+    const hours = rows.filter((r) => r.day === day).map((r) => r.hour).sort((a, b) => a - b);
+    for (const hour of hours) {
+      const last = ranges.at(-1);
+      if (last && last.day === day && last.end === hour) last.end = hour + 1;
+      else ranges.push({ day, start: hour, end: hour + 1 });
+    }
+  }
+  return ranges;
+}
 
 // Keep only blocks the Schedule page can draw, so a sloppy AI answer can't break the grid.
 function cleanBlocks(blocks: unknown): Block[] {
@@ -54,16 +72,23 @@ Deno.serve(async (req) => {
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return json({ error: "You need to be logged in." }, 401);
 
-  const [classes, work, workouts, personal, goals] = await Promise.all([
+  const [classes, work, workouts, personal, goals, blockedRows] = await Promise.all([
     supabase.from("subjects").select("name, difficulty, study_hours, class_days, start_time, end_time"),
     supabase.from("work_info").select("job, work_days, start_time, end_time, priority"),
     supabase.from("workouts").select("workout_type, preferred_day, preferred_time"),
     supabase.from("personal_activities").select("activity, day, time"),
     supabase.from("goals").select("goal, priority, deadline"),
+    supabase.from("blocked_times").select("day, hour"),
   ]);
 
-  const error = classes.error ?? work.error ?? workouts.error ?? personal.error ?? goals.error;
+  const error =
+    classes.error ?? work.error ?? workouts.error ?? personal.error ?? goals.error ?? blockedRows.error;
   if (error) return json({ error: error.message }, 500);
+
+  const blocked = mergeBlocked(blockedRows.data ?? []);
+  const blockedText = blocked.length
+    ? blocked.map((r) => `${r.day} ${toTime(r.start)}-${toTime(r.end)}`).join("\n")
+    : "None";
 
   const userInfo = {
     classes: classes.data,
@@ -77,7 +102,11 @@ Deno.serve(async (req) => {
 
 ${JSON.stringify(userInfo, null, 2)}
 
+Blocked times (the user does NOT want anything scheduled here):
+${blockedText}
+
 Rules:
+- Never put study, goal, workout or personal blocks inside a blocked time. Move them to free time instead.
 - Classes and work shifts are fixed: keep their days and times exactly.
 - Add study blocks for each class so the weekly total matches its study_hours. Give harder classes more spread-out sessions.
 - Place workouts and personal activities near their preferred day/time, moving them only to avoid overlaps.
@@ -114,7 +143,13 @@ day must be one of ${days.join(", ")}. start/end are 24-hour HH:MM. category mus
     return json({ error: "The AI didn't return a readable schedule. Try again." }, 502);
   }
 
-  const blocks = cleanBlocks(plan.blocks);
+  // Classes and work are fixed by the user, but anything the AI placed in a blocked time is dropped.
+  const blocks = cleanBlocks(plan.blocks).filter(
+    (b) =>
+      b.category === "class" ||
+      b.category === "work" ||
+      !blocked.some((r) => r.day === b.day && toHours(b.start) < r.end && toHours(b.end) > r.start),
+  );
   if (!blocks.length) return json({ error: "The AI returned an empty schedule. Try again." }, 502);
 
   return json({ summary: String(plan.summary ?? ""), blocks });

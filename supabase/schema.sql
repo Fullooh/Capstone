@@ -2,7 +2,9 @@
 -- (Brandon) I applied the original version to the shared Supabase project on 2026-10-07.
 -- Since then: per-class columns on subjects (2026-10-12), and goals, workouts and
 -- personal_activities (2026-10-13), all already applied. Separate: migrations/2026-10-13_drop_school_info.sql
--- and migrations/2026-10-19_subject_class_times.sql (class days/times on subjects).
+-- and migrations/2026-10-19_subject_class_times.sql (class days/times on subjects),
+-- migrations/2026-10-29_blocked_times.sql (greyed-out hours on the Schedule page),
+-- and migrations/2026-10-29_saved_schedules.sql (the saved AI schedule).
 
 
 -- PROFILES: first/last name from the Signup page

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { Link, navigate } from "@/lib/router";
@@ -53,8 +53,16 @@ export function SchedulePage() {
   const [aiPlan, setAiPlan] = useState<AiPlan | null>(null);
   const [showAi, setShowAi] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
+  // True when aiPlan is the one stored in saved_schedules.
+  const [planSaved, setPlanSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const [now, setNow] = useState(() => new Date());
+  // Greyed-out hours as "dayIndex-hour" keys, e.g. "0-22" = Monday 10 PM.
+  const [blocked, setBlocked] = useState<Set<string>>(new Set());
+  const [blocking, setBlocking] = useState(false);
+  // While dragging in block mode: true = greying out, false = clearing, null = not dragging.
+  const paint = useRef<boolean | null>(null);
 
   const hours = Array.from(
     { length: endHour - startHour },
@@ -63,20 +71,37 @@ export function SchedulePage() {
 
   // RLS only returns the logged-in user's rows, so no user filter is needed here.
   async function loadSchedule() {
-    const [classes, work, workouts, personal, goals] = await Promise.all([
+    const [classes, work, workouts, personal, goals, blockedRows, saved] = await Promise.all([
       supabase.from("subjects").select("id, name, class_days, start_time, end_time, study_hours"),
       supabase.from("work_info").select("id, job, work_days, start_time, end_time"),
       supabase.from("workouts").select("id, workout_type, preferred_day, preferred_time"),
       supabase.from("personal_activities").select("id, activity, day, time"),
       supabase.from("goals").select("id, goal, priority, deadline").not("deadline", "is", null),
+      supabase.from("blocked_times").select("day, hour"),
+      supabase.from("saved_schedules").select("summary, blocks").maybeSingle(),
     ]);
 
     const error =
-      classes.error ?? work.error ?? workouts.error ?? personal.error ?? goals.error;
+      classes.error ??
+      work.error ??
+      workouts.error ??
+      personal.error ??
+      goals.error ??
+      blockedRows.error ??
+      saved.error;
     if (error) {
       toast.error("Couldn't load schedule", { description: error.message });
       setLoading(false);
       return;
+    }
+
+    setBlocked(new Set((blockedRows.data ?? []).map((row) => `${days.indexOf(row.day)}-${row.hour}`)));
+
+    // A saved AI schedule is what the user picked, so open on it.
+    if (saved.data) {
+      setAiPlan({ summary: saved.data.summary ?? "", blocks: saved.data.blocks });
+      setShowAi(true);
+      setPlanSaved(true);
     }
 
     setStudyTarget(
@@ -123,6 +148,31 @@ export function SchedulePage() {
     setLoading(false);
   }
 
+  // Grey out (or clear) one hour. Updates the grid right away, then saves; undoes it if the save fails.
+  async function setBlockedHour(d: number, hour: number, value: boolean) {
+    const key = `${d}-${hour}`;
+    if (blocked.has(key) === value) return;
+
+    const update = (add: boolean) =>
+      setBlocked((prev) => {
+        const next = new Set(prev);
+        if (add) next.add(key);
+        else next.delete(key);
+        return next;
+      });
+    update(value);
+
+    const { error } = value
+      ? await supabase
+          .from("blocked_times")
+          .upsert({ day: days[d], hour }, { onConflict: "user_id,day,hour", ignoreDuplicates: true })
+      : await supabase.from("blocked_times").delete().match({ day: days[d], hour });
+    if (error) {
+      update(!value);
+      toast.error("Couldn't save blocked time", { description: error.message });
+    }
+  }
+
   // The Edge Function reads the user's data itself, so nothing needs to be sent.
   async function optimizeSchedule() {
     setOptimizing(true);
@@ -140,6 +190,26 @@ export function SchedulePage() {
 
     setAiPlan(data);
     setShowAi(true);
+    setPlanSaved(false);
+  }
+
+  // Keep the current AI plan. There's one saved schedule per user, so this replaces the old one.
+  async function saveSchedule() {
+    if (!aiPlan) return;
+    setSaving(true);
+    const { error } = await supabase.from("saved_schedules").upsert({
+      summary: aiPlan.summary,
+      blocks: aiPlan.blocks,
+      saved_at: new Date().toISOString(),
+    });
+    setSaving(false);
+
+    if (error) {
+      toast.error("Couldn't save schedule", { description: error.message });
+      return;
+    }
+    setPlanSaved(true);
+    toast.success("Schedule saved");
   }
 
   useEffect(() => {
@@ -156,6 +226,13 @@ export function SchedulePage() {
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(timer);
+  }, []);
+
+  // A drag can end outside the grid, so listen on the whole window.
+  useEffect(() => {
+    const stopPainting = () => (paint.current = null);
+    window.addEventListener("pointerup", stopPainting);
+    return () => window.removeEventListener("pointerup", stopPainting);
   }, []);
 
   // The recurring schedule is the same every week; the dates only matter for goal deadlines.
@@ -246,6 +323,18 @@ export function SchedulePage() {
               {showAi ? "Show My Schedule" : "Show AI Schedule"}
             </Button>
           )}
+          <Button
+            onClick={() => setBlocking(!blocking)}
+            variant={blocking ? "default" : "outline"}
+            disabled={loading}
+          >
+            {blocking ? "Done Blocking" : "Block Times"}
+          </Button>
+          {aiPlan && showAi && (
+            <Button onClick={saveSchedule} disabled={saving || planSaved}>
+              {saving ? "Saving..." : planSaved ? "Saved" : "Save Schedule"}
+            </Button>
+          )}
           <Button onClick={optimizeSchedule} disabled={optimizing || loading}>
             {optimizing ? "Optimizing..." : aiPlan ? "Re-optimize" : "Optimize with AI"}
           </Button>
@@ -257,10 +346,14 @@ export function SchedulePage() {
 
       {showAi && aiPlan && (
         <section className="mt-6 rounded-xl border border-sky-200 bg-sky-50/50 p-4 text-sm">
-          <p className="font-semibold">AI-optimized schedule</p>
+          <p className="font-semibold">
+            {planSaved ? "Your saved schedule" : "AI-optimized schedule"}
+          </p>
           <p className="mt-1 text-muted-foreground">{aiPlan.summary}</p>
           <p className="mt-2 text-xs text-muted-foreground">
-            This is a suggestion — nothing has been saved or changed.
+            {planSaved
+              ? "Saved. It won't update on its own if you change your classes or work, so re-optimize and save again after big changes."
+              : "This is a suggestion. Click Save Schedule to keep it."}
           </p>
         </section>
       )}
@@ -276,6 +369,9 @@ export function SchedulePage() {
               {totals[source] ? ` · ${formatHours(totals[source])}` : ""}
             </span>
           ))}
+          <span className="rounded-md border border-gray-300 bg-gray-200 px-2 py-1 font-medium text-gray-700">
+            Blocked{blocked.size ? ` · ${blocked.size}h` : ""}
+          </span>
         </div>
 
         <div className="flex items-center gap-2 print:hidden">
@@ -296,6 +392,13 @@ export function SchedulePage() {
           <span className="ml-1 text-sm font-medium">{weekLabel}</span>
         </div>
       </div>
+
+      {blocking && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Click or drag across hours to grey them out. The AI won't add anything there.
+          Click a grey hour to clear it.
+        </p>
+      )}
 
       {!showAi && studyTarget > 0 && !totals.study && (
         <p className="mt-3 text-sm text-muted-foreground">
@@ -378,22 +481,41 @@ export function SchedulePage() {
               {days.map((day, d) => (
                 <div
                   key={day}
-                  className={`relative border-r last:border-r-0 ${d === todayIndex ? "bg-primary/[0.03]" : ""}`}
+                  className={`relative border-r last:border-r-0 ${d === todayIndex ? "bg-primary/[0.03]" : ""} ${blocking ? "select-none" : ""}`}
                 >
-                  {hours.map((hour) => (
-                    <div
-                      key={hour}
-                      className="border-b"
-                      style={{ height: slotHeight }}
-                    />
-                  ))}
+                  {hours.map((hour) => {
+                    const isBlocked = blocked.has(`${d}-${hour}`);
+                    return (
+                      <div
+                        key={hour}
+                        title={isBlocked ? "Blocked: the AI won't schedule anything here" : undefined}
+                        className={`border-b ${isBlocked ? "bg-gray-200" : ""} ${blocking ? (isBlocked ? "cursor-pointer hover:bg-gray-300" : "cursor-pointer hover:bg-muted") : ""}`}
+                        style={{ height: slotHeight }}
+                        onPointerDown={
+                          blocking
+                            ? () => {
+                                paint.current = !isBlocked;
+                                setBlockedHour(d, hour, !isBlocked);
+                              }
+                            : undefined
+                        }
+                        onPointerEnter={
+                          blocking
+                            ? () => {
+                                if (paint.current !== null) setBlockedHour(d, hour, paint.current);
+                              }
+                            : undefined
+                        }
+                      />
+                    );
+                  })}
 
                   {placedByDay[d].map((item) => (
                     <Link
                       key={item.key}
                       href={sourceStyles[item.source].href}
                       title={`${item.title} · ${formatTime(item.start)} – ${formatTime(item.end)}`}
-                      className={`absolute overflow-hidden rounded-md border px-2 py-1 text-xs shadow-sm transition-shadow hover:shadow-md ${sourceStyles[item.source].className}`}
+                      className={`absolute overflow-hidden rounded-md border px-2 py-1 text-xs shadow-sm transition-shadow hover:shadow-md ${sourceStyles[item.source].className} ${blocking ? "pointer-events-none opacity-50" : ""}`}
                       style={{
                         top: (item.start - startHour) * slotHeight + 1,
                         height: (item.end - item.start) * slotHeight - 2,
