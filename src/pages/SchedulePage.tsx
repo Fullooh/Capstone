@@ -64,11 +64,6 @@ export function SchedulePage() {
   // While dragging in block mode: true = greying out, false = clearing, null = not dragging.
   const paint = useRef<boolean | null>(null);
 
-  const hours = Array.from(
-    { length: endHour - startHour },
-    (_, index) => startHour + index,
-  );
-
   // RLS only returns the logged-in user's rows, so no user filter is needed here.
   async function loadSchedule() {
     const [classes, work, workouts, personal, goals, blockedRows, saved] = await Promise.all([
@@ -292,6 +287,15 @@ export function SchedulePage() {
 
   const placedByDay = byDay.map(layoutDay);
 
+  // Only show the hours from the earliest item to the latest one. In block mode (or with
+  // nothing scheduled) show the full day so any hour can be greyed out.
+  const placed = byDay.flat();
+  const viewStart =
+    blocking || placed.length === 0 ? startHour : Math.floor(Math.min(...placed.map((item) => item.start)));
+  const viewEnd =
+    blocking || placed.length === 0 ? endHour : Math.ceil(Math.max(...placed.map((item) => item.end)));
+  const hours = Array.from({ length: viewEnd - viewStart }, (_, index) => viewStart + index);
+
   // Hours per category for the week, shown next to each legend chip.
   const totals = {} as Record<Source, number>;
   for (const item of byDay.flat()) {
@@ -471,9 +475,9 @@ export function SchedulePage() {
                   </div>
                 ))}
 
-                {/* Midnight boundary */}
+                {/* End boundary */}
                 <div className="px-2 pt-1 text-right text-xs text-muted-foreground">
-                  12:00 AM
+                  {formatTime(viewEnd)}
                 </div>
               </div>
 
@@ -517,7 +521,7 @@ export function SchedulePage() {
                       title={`${item.title} · ${formatTime(item.start)} – ${formatTime(item.end)}`}
                       className={`absolute overflow-hidden rounded-md border px-2 py-1 text-xs shadow-sm transition-shadow hover:shadow-md ${sourceStyles[item.source].className} ${blocking ? "pointer-events-none opacity-50" : ""}`}
                       style={{
-                        top: (item.start - startHour) * slotHeight + 1,
+                        top: (item.start - viewStart) * slotHeight + 1,
                         height: (item.end - item.start) * slotHeight - 2,
                         left: `calc(${(item.lane / item.lanes) * 100}% + 2px)`,
                         width: `calc(${100 / item.lanes}% - 4px)`,
@@ -531,10 +535,10 @@ export function SchedulePage() {
                   ))}
 
                   {/* Current time */}
-                  {d === todayIndex && nowHour >= startHour && nowHour < endHour && (
+                  {d === todayIndex && nowHour >= viewStart && nowHour < viewEnd && (
                     <div
                       className="pointer-events-none absolute inset-x-0 z-10 flex items-center print:hidden"
-                      style={{ top: (nowHour - startHour) * slotHeight }}
+                      style={{ top: (nowHour - viewStart) * slotHeight }}
                     >
                       <span className="-ml-1 h-2 w-2 rounded-full bg-red-500" />
                       <span className="h-0.5 flex-1 bg-red-500" />
