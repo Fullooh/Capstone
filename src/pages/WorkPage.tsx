@@ -1,36 +1,48 @@
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
-import { Link, navigate } from "@/lib/router";
-import { Button } from "@/components/ui/button";
+import { startOfWeek, toDateKey } from "@/lib/schedule";
+import { todayKey, useLocalList, useRequireUser } from "@/lib/page-utils";
+import {
+  FolderLayout,
+  FolderPageLoading,
+  FolderPageShell,
+  OverviewStats,
+  PageHeader,
+  type FolderNavItem,
+} from "@/components/FolderPage";
+import {
+  HoursSection,
+  JobsSection,
+  TasksSection,
+  weeklyHours,
+  type Job,
+  type Shift,
+  type WorkTask,
+} from "@/components/WorkSections";
 
-type WorkInfo = {
-  id: number;
-  job: string;
-  work_days: string | null;
-  start_time: string | null;
-  end_time: string | null;
-  priority: string | null;
-  notes: string | null;
-};
+type Section = "jobs" | "hours" | "tasks";
 
-function formatTime(time: string | null) {
-  if (!time) return null;
-  const [h, m] = time.split(":").map(Number);
-  const suffix = h >= 12 ? "PM" : "AM";
-  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${suffix}`;
-}
+const navigation: FolderNavItem<Section>[] = [
+  { id: "jobs", label: "Jobs & Shifts", icon: "💼", description: "Your regular work schedule" },
+  { id: "hours", label: "Hours Log", icon: "⏱️", description: "Hours worked and pay" },
+  { id: "tasks", label: "Work Tasks", icon: "✅", description: "To-dos and deadlines" },
+];
 
-function textOrNull(value: FormDataEntryValue | null) {
-  const text = (value as string | null)?.trim();
-  return text || null;
+function formatHours(hours: number) {
+  return Number.isInteger(hours) ? `${hours}` : hours.toFixed(1);
 }
 
 export function WorkPage() {
-  const [jobs, setJobs] = useState<WorkInfo[]>([]);
+  const userId = useRequireUser();
+  const [active, setActive] = useState<Section>("jobs");
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  // Jobs live in Supabase (they feed the Schedule page); the hours log and tasks
+  // are kept in this browser for now, like the Personal diary.
+  const [shifts, setShifts] = useLocalList<Shift>("work", "shifts", userId);
+  const [tasks, setTasks] = useLocalList<WorkTask>("work", "tasks", userId);
 
   async function loadJobs() {
     const { data, error } = await supabase
@@ -39,406 +51,80 @@ export function WorkPage() {
       .order("created_at", { ascending: true });
 
     if (error) {
-      toast.error("Couldn't load work information", {
-        description: error.message,
-      });
-    } else {
-      setJobs(data);
+      toast.error("Couldn't load work information", { description: error.message });
+      return;
     }
-
-    setLoading(false);
+    setJobs(data ?? []);
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) {
-        navigate("/login");
-        return;
-      }
-      loadJobs();
-    });
-  }, []);
+    if (!userId) return;
+    loadJobs().then(() => setLoading(false));
+  }, [userId]);
 
-  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // Overview numbers
+  const scheduledHours = jobs.reduce((sum, job) => sum + (weeklyHours(job) ?? 0), 0);
+  const weekStart = toDateKey(startOfWeek(new Date()));
+  const loggedThisWeek = shifts
+    .filter((s) => s.date >= weekStart && s.date <= todayKey())
+    .reduce((sum, s) => sum + s.hours, 0);
+  const openTasks = tasks.filter((t) => !t.done);
+  const overdue = openTasks.filter((t) => t.due && t.due < todayKey()).length;
 
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const job = textOrNull(data.get("job"));
-
-    if (!job) {
-      toast.error("Please add a job or workplace");
-      return;
-    }
-
-    setSaving(true);
-
-    const { error } = await supabase.from("work_info").insert({
-      job,
-      work_days: textOrNull(data.get("workDays")),
-      start_time: textOrNull(data.get("startTime")),
-      end_time: textOrNull(data.get("endTime")),
-      priority: data.get("priority") as string,
-      notes: textOrNull(data.get("notes")),
-    });
-
-    setSaving(false);
-
-    if (error) {
-      toast.error("Couldn't save work information", {
-        description: error.message,
-      });
-      return;
-    }
-
-    form.reset();
-    toast.success("Work information saved");
-    await loadJobs();
-  }
-
-  async function handleDelete(id: number) {
-    setDeletingId(id);
-
-    const { error } = await supabase
-      .from("work_info")
-      .delete()
-      .eq("id", id);
-
-    setDeletingId(null);
-
-    if (error) {
-      toast.error("Couldn't delete job", {
-        description: error.message,
-      });
-      return;
-    }
-
-    setJobs((current) => current.filter((job) => job.id !== id));
-    toast.success("Job deleted");
-  }
-
-  const scheduledJobs = jobs.filter(
-    (job) => job.work_days || job.start_time || job.end_time
-  ).length;
-
-  const highPriorityJobs = jobs.filter(
-    (job) => job.priority === "high"
-  ).length;
-
-  const stats = [
-    {
-      label: "Total Jobs",
-      value: jobs.length,
-      icon: "💼",
-      description: "Workplaces in your list",
-    },
-    {
-      label: "With Schedules",
-      value: scheduledJobs,
-      icon: "📅",
-      description: "Jobs with availability details",
-    },
-    {
-      label: "High Priority",
-      value: highPriorityJobs,
-      icon: "⭐",
-      description: "Jobs marked high priority",
-    },
-  ];
-
-  const inputClass =
-    "mt-2 w-full rounded-md border bg-background px-3 py-2.5 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring";
+  if (loading) return <FolderPageLoading message="Loading your work space..." />;
 
   return (
-    <main className="min-h-screen bg-muted/30">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-foreground"
-        >
-          <span aria-hidden="true">←</span>
-          Back to Dashboard
-        </Link>
+    <FolderPageShell>
+      <PageHeader
+        icon="💼"
+        iconClassName="bg-amber-100"
+        eyebrow="Your Professional Life"
+        title="Work"
+        description="Keep your jobs, hours and work to-dos in one place, balanced with the rest of your week."
+      />
 
-        <header className="mt-5 rounded-xl border bg-card p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-3xl">
-              💼
-            </div>
-            <div className="flex-1">
-              <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
-                Your Professional Life
-              </p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">
-                Work
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Organize your jobs, manage work hours, and balance your
-                professional responsibilities with the rest of your life.
-              </p>
-            </div>
-            <a
-              href="#work-form"
-              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-90"
-            >
-              + Add Job
-            </a>
-          </div>
-        </header>
+      <OverviewStats
+        title="Work Overview"
+        description="A quick look at your jobs, hours and open tasks."
+        stats={[
+          {
+            label: "Jobs",
+            value: jobs.length,
+            icon: "💼",
+            description: "Workplaces in your folder",
+          },
+          {
+            label: "Scheduled Hours",
+            value: formatHours(scheduledHours),
+            icon: "📅",
+            description: "Per week, from your regular shifts",
+          },
+          {
+            label: "Logged This Week",
+            value: formatHours(loggedThisWeek),
+            icon: "⏱️",
+            description: "Hours recorded since Monday",
+          },
+          {
+            label: "Open Tasks",
+            value: openTasks.length,
+            icon: "✅",
+            description: overdue ? `${overdue} overdue` : "Nothing overdue",
+          },
+        ]}
+      />
 
-        <section
-          aria-label="Work summary"
-          className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-        >
-          {stats.map((stat) => (
-            <div key={stat.label} className="rounded-xl border bg-card p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {stat.label}
-                  </p>
-                  <p className="mt-2 text-3xl font-bold tracking-tight">
-                    {loading ? "—" : stat.value}
-                  </p>
-                </div>
-                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-xl">
-                  {stat.icon}
-                </div>
-              </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                {stat.description}
-              </p>
-            </div>
-          ))}
-        </section>
-
-        <div className="mt-8 grid items-start gap-6 lg:grid-cols-2">
-          <section
-            id="work-form"
-            className="scroll-mt-6 rounded-xl border bg-card p-6 shadow-sm"
-          >
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
-                Plan your work
-              </p>
-              <h2 className="mt-1 text-xl font-bold">Work Information</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Enter your workplace, schedule, and priority.
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-              <div className="space-y-2">
-                <label htmlFor="job" className="text-sm font-medium">
-                  Job / Workplace <span className="text-destructive">*</span>
-                </label>
-                <input
-                  id="job"
-                  name="job"
-                  type="text"
-                  required
-                  maxLength={150}
-                  placeholder="e.g. Retail Assistant, Internship"
-                  className={inputClass}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="workDays" className="text-sm font-medium">
-                  Work Days
-                </label>
-                <input
-                  id="workDays"
-                  name="workDays"
-                  type="text"
-                  maxLength={150}
-                  placeholder="e.g. Monday, Wednesday, Friday"
-                  className={inputClass}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Enter one or multiple days.
-                </p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="workStart" className="text-sm font-medium">
-                    Start Time
-                  </label>
-                  <input
-                    id="workStart"
-                    name="startTime"
-                    type="time"
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="workEnd" className="text-sm font-medium">
-                    End Time
-                  </label>
-                  <input
-                    id="workEnd"
-                    name="endTime"
-                    type="time"
-                    className={inputClass}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="workPriority" className="text-sm font-medium">
-                  Priority Level
-                </label>
-                <select
-                  id="workPriority"
-                  name="priority"
-                  defaultValue="medium"
-                  className={inputClass}
-                >
-                  <option value="low">Low Priority</option>
-                  <option value="medium">Medium Priority</option>
-                  <option value="high">High Priority</option>
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="workNotes" className="text-sm font-medium">
-                  Additional Notes
-                </label>
-                <textarea
-                  id="workNotes"
-                  name="notes"
-                  rows={4}
-                  maxLength={2000}
-                  placeholder="Add details to help you plan your time..."
-                  className={inputClass}
-                />
-              </div>
-
-              <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:justify-end">
-                <Button type="reset" variant="outline" disabled={saving}>
-                  Clear Form
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Saving..." : "Save Work Information"}
-                </Button>
-              </div>
-            </form>
-          </section>
-
-          <section className="rounded-xl border bg-card p-6 shadow-sm">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
-                Your commitments
-              </p>
-              <h2 className="mt-1 text-xl font-bold">Your Jobs</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Review your work commitments and remove outdated entries.
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {loading
-                  ? "Loading jobs..."
-                  : `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}`}
-              </p>
-            </div>
-
-            {loading ? (
-              <div className="mt-6 space-y-3">
-                {[1, 2, 3].map((item) => (
-                  <div key={item} className="h-24 animate-pulse rounded-lg bg-muted" />
-                ))}
-              </div>
-            ) : jobs.length === 0 ? (
-              <div className="mt-6 rounded-lg border border-dashed px-4 py-10 text-center">
-                <div className="text-4xl">💼</div>
-                <h3 className="mt-3 font-semibold">No jobs added yet</h3>
-                <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
-                  Add your first job to organize your work hours and
-                  balance your commitments.
-                </p>
-                <a
-                  href="#work-form"
-                  className="mt-4 inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted"
-                >
-                  Add your first job
-                </a>
-              </div>
-            ) : (
-              <ul className="mt-6 space-y-4">
-                {jobs.map((job) => (
-                  <li
-                    key={job.id}
-                    className="min-w-0 rounded-lg border p-4 transition hover:shadow-sm"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xl">
-                        💼
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="break-words font-semibold">{job.job}</h3>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {job.work_days && (
-                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                              📅 {job.work_days}
-                            </span>
-                          )}
-                          {(job.start_time || job.end_time) && (
-                            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
-                              🕒 {formatTime(job.start_time) || "Start not set"}
-                              {" – "}
-                              {formatTime(job.end_time) || "End not set"}
-                            </span>
-                          )}
-                          {!job.work_days && !job.start_time && !job.end_time && (
-                            <span className="text-xs text-muted-foreground">
-                              No schedule set
-                            </span>
-                          )}
-                          {job.priority && (
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${
-                                job.priority === "high"
-                                  ? "bg-red-50 text-red-700"
-                                  : job.priority === "low"
-                                    ? "bg-gray-100 text-gray-700"
-                                    : "bg-amber-50 text-amber-700"
-                              }`}
-                            >
-                              {job.priority} priority
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {job.notes && (
-                      <p className="mt-4 whitespace-pre-wrap break-words border-t pt-3 text-sm leading-6 text-muted-foreground">
-                        {job.notes}
-                      </p>
-                    )}
-
-                    <div className="mt-4 flex justify-end border-t pt-3">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={deletingId === job.id}
-                        onClick={() => handleDelete(job.id)}
-                      >
-                        {deletingId === job.id ? "Deleting..." : "Delete Job"}
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-
-        <footer className="py-8 text-center text-sm text-muted-foreground">
-          Make time for your work. Make time for your life.
-        </footer>
-      </div>
-    </main>
+      <FolderLayout title="Work Folders" items={navigation} active={active} onSelect={setActive}>
+        {active === "jobs" && (
+          <JobsSection
+            jobs={jobs}
+            onChanged={loadJobs}
+            onRemoved={(id) => setJobs((current) => current.filter((j) => j.id !== id))}
+          />
+        )}
+        {active === "hours" && <HoursSection jobs={jobs} shifts={shifts} setShifts={setShifts} />}
+        {active === "tasks" && <TasksSection jobs={jobs} tasks={tasks} setTasks={setTasks} />}
+      </FolderLayout>
+    </FolderPageShell>
   );
 }
