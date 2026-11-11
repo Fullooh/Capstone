@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { addDays, startOfWeek, toDateKey } from "@/lib/schedule";
-import { todayKey, useLocalList, useLocalState, useRequireUser } from "@/lib/page-utils";
+import { todayKey, useLocalState, useRequireUser } from "@/lib/page-utils";
+import { useSyncedList } from "@/lib/synced-list";
 import {
   FolderLayout,
   FolderPageLoading,
@@ -15,8 +16,8 @@ import {
   LogSection,
   ProgressSection,
   RoutineSection,
+  sessionTable,
   type Workout,
-  type WorkoutSession,
 } from "@/components/WorkoutSections";
 
 type Section = "routine" | "log" | "progress";
@@ -45,9 +46,9 @@ export function WorkoutPage() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // The routine lives in Supabase (it feeds the Schedule page); the log and goal are
-  // kept in this browser for now, like the Personal diary.
-  const [sessions, setSessions] = useLocalList<WorkoutSession>("workout", "log", userId);
+  // The routine and the log live in Supabase; the weekly goal is kept in this browser.
+  const sessionList = useSyncedList(sessionTable(userId));
+  const sessions = sessionList.items;
   const [weeklyGoal, setWeeklyGoal] = useLocalState<number>(
     "workout",
     "weeklyGoal",
@@ -74,17 +75,13 @@ export function WorkoutPage() {
     loadWorkouts().then(() => setLoading(false));
   }, [userId]);
 
-  function logSession(session: Omit<WorkoutSession, "id">) {
-    setSessions((current) => [{ id: crypto.randomUUID(), ...session }, ...current]);
-  }
-
   // Overview numbers
   const weekStart = toDateKey(startOfWeek(new Date()));
   const thisWeek = sessions.filter((s) => s.date >= weekStart && s.date <= todayKey());
   const minutesThisWeek = thisWeek.reduce((sum, s) => sum + (s.minutes ?? 0), 0);
   const streak = currentStreak(new Set(sessions.map((s) => s.date)));
 
-  if (loading) return <FolderPageLoading message="Loading your fitness space..." />;
+  if (loading || sessionList.loading) return <FolderPageLoading message="Loading your fitness space..." />;
 
   return (
     <FolderPageShell>
@@ -134,15 +131,15 @@ export function WorkoutPage() {
             sessions={sessions}
             onChanged={loadWorkouts}
             onRemoved={(id) => setWorkouts((current) => current.filter((w) => w.id !== id))}
-            onLogToday={(workout) => {
-              logSession({
+            onLogToday={async (workout) => {
+              const saved = await sessionList.add({
                 date: todayKey(),
                 workout: workout.workout_type,
                 minutes: null,
                 intensity: "moderate",
                 notes: "",
               });
-              toast.success(`Logged ${workout.workout_type} for today`);
+              if (saved) toast.success(`Logged ${workout.workout_type} for today`);
             }}
           />
         )}
@@ -151,8 +148,9 @@ export function WorkoutPage() {
           <LogSection
             workouts={workouts}
             sessions={sessions}
-            setSessions={setSessions}
-            onLog={logSession}
+            onLog={sessionList.add}
+            onUpdate={sessionList.update}
+            onDelete={sessionList.remove}
           />
         )}
 

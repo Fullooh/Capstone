@@ -4,7 +4,9 @@
 -- personal_activities (2026-10-13), all already applied. Separate: migrations/2026-10-13_drop_school_info.sql
 -- and migrations/2026-10-19_subject_class_times.sql (class days/times on subjects),
 -- migrations/2026-10-29_blocked_times.sql (greyed-out hours on the Schedule page),
--- and migrations/2026-10-29_saved_schedules.sql (the saved AI schedule).
+-- migrations/2026-10-29_saved_schedules.sql (the saved AI schedule),
+-- and migrations/2026-11-11_browser_data_tables.sql (work_shifts, work_tasks, workout_sessions,
+-- assignments, flashcards, class_notes, diary_entries: data that used to be browser-only).
 
 
 -- PROFILES: first/last name from the Signup page

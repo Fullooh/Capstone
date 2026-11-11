@@ -50,7 +50,8 @@ export function useRequireUser() {
 
 // A value kept in this browser's localStorage, per user, under
 // `my-schedule-360-<page>-<userId>` -> { [field]: value } (same layout as the Personal diary).
-// Used for features that don't have a Supabase table yet.
+// Only for small per-browser preferences (e.g. the weekly workout goal); real data goes
+// in Supabase via useSyncedList (src/lib/synced-list.ts).
 export function useLocalState<T>(
   page: string,
   field: string,
@@ -86,8 +87,4 @@ export function useLocalState<T>(
   }, [value, key, field, loadedFor]);
 
   return [value, setValue] as const;
-}
-
-export function useLocalList<T>(page: string, field: string, userId: string | null) {
-  return useLocalState<T[]>(page, field, userId, [], Array.isArray);
 }

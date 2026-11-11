@@ -1,10 +1,11 @@
-import { useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { parseDays, startOfWeek, toDateKey, toHours } from "@/lib/schedule";
 import { formatClock, formatDate, textOrNull, todayKey } from "@/lib/page-utils";
 import { Chip, EmptyState, SectionIntro, inputClass } from "@/components/FolderPage";
+import { oldNumber, oldText, type SyncedListOptions } from "@/lib/synced-list";
 
 export type Priority = "low" | "medium" | "high";
 
@@ -21,7 +22,7 @@ export type Job = {
 export type Shift = {
   id: string;
   date: string; // YYYY-MM-DD
-  job: string;
+  jobId: number | null; // null once the job is deleted
   hours: number;
   rate: number | null; // $/hour
   notes: string;
@@ -30,11 +31,107 @@ export type Shift = {
 export type WorkTask = {
   id: string;
   title: string;
-  job: string | null;
+  jobId: number | null;
   due: string | null;
   priority: Priority;
   done: boolean;
 };
+
+// The add / update / remove functions from useSyncedList.
+type ListActions<T extends { id: string }> = {
+  add: (fields: Omit<T, "id">) => Promise<T | null>;
+  update: (id: string, changes: Partial<Omit<T, "id">>) => Promise<boolean>;
+  remove: (id: string) => Promise<boolean>;
+};
+
+const isPriority = (value: unknown): value is Priority =>
+  value === "low" || value === "medium" || value === "high";
+
+// Old browser entries stored the job by name; match it to a job id when we can.
+function oldJobId(jobs: Job[], name: unknown) {
+  return jobs.find((job) => job.job === name)?.id ?? null;
+}
+
+// Supabase table work_shifts (migrations/2026-11-11_browser_data_tables.sql).
+type ShiftRow = { date: string; job_id: number | null; hours: number; rate: number | null; notes: string | null };
+
+export function shiftTable(userId: string | null, jobs: Job[]): SyncedListOptions<Shift, ShiftRow> {
+  return {
+    table: "work_shifts",
+    userId,
+    label: "hours log",
+    fromRow: (row) => ({
+      id: row.id,
+      date: row.date,
+      jobId: row.job_id,
+      hours: Number(row.hours),
+      rate: row.rate === null ? null : Number(row.rate),
+      notes: row.notes ?? "",
+    }),
+    toRow: (s) => ({ date: s.date, job_id: s.jobId, hours: s.hours, rate: s.rate, notes: s.notes || null }),
+    legacy: userId
+      ? {
+          key: `my-schedule-360-work-${userId}`,
+          field: "shifts",
+          toItem: (old) => {
+            const date = oldText(old.date);
+            const hours = oldNumber(old.hours);
+            if (!date || hours === null) return null;
+            return {
+              id: oldText(old.id) ?? "",
+              date,
+              jobId: oldJobId(jobs, old.job),
+              hours,
+              rate: oldNumber(old.rate),
+              notes: oldText(old.notes) ?? "",
+            };
+          },
+        }
+      : undefined,
+  };
+}
+
+// Supabase table work_tasks.
+type TaskRow = { title: string; job_id: number | null; due: string | null; priority: Priority; done: boolean };
+
+export function taskTable(userId: string | null, jobs: Job[]): SyncedListOptions<WorkTask, TaskRow> {
+  return {
+    table: "work_tasks",
+    userId,
+    label: "work tasks",
+    fromRow: (row) => ({
+      id: row.id,
+      title: row.title,
+      jobId: row.job_id,
+      due: row.due,
+      priority: row.priority,
+      done: row.done,
+    }),
+    toRow: (t) => ({ title: t.title, job_id: t.jobId, due: t.due, priority: t.priority, done: t.done }),
+    legacy: userId
+      ? {
+          key: `my-schedule-360-work-${userId}`,
+          field: "tasks",
+          toItem: (old) => {
+            const title = oldText(old.title);
+            if (!title) return null;
+            return {
+              id: oldText(old.id) ?? "",
+              title,
+              jobId: oldJobId(jobs, old.job),
+              due: oldText(old.due),
+              priority: isPriority(old.priority) ? old.priority : "medium",
+              done: old.done === true,
+            };
+          },
+        }
+      : undefined,
+  };
+}
+
+function jobName(jobs: Job[], jobId: number | null) {
+  return jobs.find((job) => job.id === jobId)?.job ?? null;
+}
 
 const priorityStyles: Record<string, string> = {
   high: "bg-rose-50 text-rose-700",
@@ -74,7 +171,7 @@ function JobSelect({ jobs, name, defaultValue, required }: {
     <select name={name} required={required} defaultValue={defaultValue} className={inputClass}>
       <option value="">{required ? "Choose a job" : "No specific job"}</option>
       {jobs.map((job) => (
-        <option key={job.id} value={job.job}>{job.job}</option>
+        <option key={job.id} value={job.id}>{job.job}</option>
       ))}
     </select>
   );
@@ -324,47 +421,46 @@ export function JobsSection({
 export function HoursSection({
   jobs,
   shifts,
-  setShifts,
+  actions,
 }: {
   jobs: Job[];
   shifts: Shift[];
-  setShifts: Dispatch<SetStateAction<Shift[]>>;
+  actions: ListActions<Shift>;
 }) {
+  const [saving, setSaving] = useState(false);
   const sorted = [...shifts].sort((a, b) => b.date.localeCompare(a.date));
   const lastRate = sorted.find((s) => s.rate !== null)?.rate ?? null;
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const job = textOrNull(data.get("job"));
+    const jobId = Number(data.get("job")) || null;
     const date = textOrNull(data.get("date"));
     const hours = Number(data.get("hours"));
     const rate = Number(data.get("rate"));
-    if (!job || !date || !(hours > 0)) {
+    if (!jobId || !date || !(hours > 0)) {
       toast.error("Please choose a job, date and hours worked");
       return;
     }
 
-    setShifts((current) => [
-      {
-        id: crypto.randomUUID(),
-        date,
-        job,
-        hours,
-        rate: rate > 0 ? rate : null,
-        notes: textOrNull(data.get("notes")) ?? "",
-      },
-      ...current,
-    ]);
+    setSaving(true);
+    const saved = await actions.add({
+      date,
+      jobId,
+      hours,
+      rate: rate > 0 ? rate : null,
+      notes: textOrNull(data.get("notes")) ?? "",
+    });
+    setSaving(false);
+    if (!saved) return;
     form.reset();
     toast.success("Hours logged");
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!window.confirm("Delete this entry?")) return;
-    setShifts((current) => current.filter((s) => s.id !== id));
-    toast.success("Entry deleted");
+    if (await actions.remove(id)) toast.success("Entry deleted");
   }
 
   const weekStart = toDateKey(startOfWeek(new Date()));
@@ -385,7 +481,6 @@ export function HoursSection({
     <div>
       <SectionIntro eyebrow="Track your time" title="Hours Log">
         Log the hours you actually worked and an optional hourly rate to estimate your pay.
-        Your log is saved in this browser.
       </SectionIntro>
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -411,7 +506,7 @@ export function HoursSection({
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <label className="block text-sm font-medium">
               Job <span className="text-destructive">*</span>
-              <JobSelect jobs={jobs} name="job" required defaultValue={jobs.length === 1 ? jobs[0].job : ""} />
+              <JobSelect jobs={jobs} name="job" required defaultValue={jobs.length === 1 ? String(jobs[0].id) : ""} />
             </label>
             <label className="block text-sm font-medium">
               Date <span className="text-destructive">*</span>
@@ -439,7 +534,7 @@ export function HoursSection({
             <input name="notes" maxLength={300} placeholder="Covered a shift, overtime, tips..." className={inputClass} />
           </label>
           <div className="flex justify-end border-t pt-4">
-            <Button type="submit">Log Hours</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Log Hours"}</Button>
           </div>
         </form>
       )}
@@ -455,7 +550,7 @@ export function HoursSection({
             {sorted.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
-                  <p className="break-words font-medium">{s.job}</p>
+                  <p className="break-words font-medium">{jobName(jobs, s.jobId) ?? "Deleted job"}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {formatDate(s.date)} · {hoursLabel(s.hours)}
                     {s.rate !== null && ` · ${money(pay(s))}`}
@@ -481,16 +576,17 @@ type TaskFilter = "open" | "done" | "all";
 export function TasksSection({
   jobs,
   tasks,
-  setTasks,
+  actions,
 }: {
   jobs: Job[];
   tasks: WorkTask[];
-  setTasks: Dispatch<SetStateAction<WorkTask[]>>;
+  actions: ListActions<WorkTask>;
 }) {
   const [filter, setFilter] = useState<TaskFilter>("open");
+  const [saving, setSaving] = useState(false);
   const today = todayKey();
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
@@ -499,25 +595,24 @@ export function TasksSection({
       toast.error("Please describe the task");
       return;
     }
-    setTasks((current) => [
-      {
-        id: crypto.randomUUID(),
-        title,
-        job: textOrNull(data.get("job")),
-        due: textOrNull(data.get("due")),
-        priority: (data.get("priority") as Priority) ?? "medium",
-        done: false,
-      },
-      ...current,
-    ]);
+    const priority = data.get("priority");
+    setSaving(true);
+    const saved = await actions.add({
+      title,
+      jobId: Number(data.get("job")) || null,
+      due: textOrNull(data.get("due")),
+      priority: isPriority(priority) ? priority : "medium",
+      done: false,
+    });
+    setSaving(false);
+    if (!saved) return;
     form.reset();
     toast.success("Task added");
   }
 
-  const toggle = (id: string) =>
-    setTasks((current) => current.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  const toggle = (task: WorkTask) => actions.update(task.id, { done: !task.done });
 
-  const remove = (id: string) => setTasks((current) => current.filter((t) => t.id !== id));
+  const remove = (id: string) => actions.remove(id);
 
   // Open tasks first, then by due date (no date last), then priority.
   const visible = tasks
@@ -538,8 +633,7 @@ export function TasksSection({
   return (
     <div>
       <SectionIntro eyebrow="Stay on top of it" title="Work Tasks">
-        Keep track of reports, trainings, emails and other work to-dos. Tasks are saved in
-        this browser.
+        Keep track of reports, trainings, emails and other work to-dos.
       </SectionIntro>
 
       <form onSubmit={handleSubmit} className="space-y-5 rounded-xl border bg-muted/20 p-5">
@@ -567,7 +661,7 @@ export function TasksSection({
           </label>
         </div>
         <div className="flex justify-end border-t pt-4">
-          <Button type="submit">Add Task</Button>
+          <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Add Task"}</Button>
         </div>
       </form>
 
@@ -606,7 +700,7 @@ export function TasksSection({
                   <input
                     type="checkbox"
                     checked={task.done}
-                    onChange={() => toggle(task.id)}
+                    onChange={() => toggle(task)}
                     aria-label={`Mark "${task.title}" as ${task.done ? "not done" : "done"}`}
                     className="mt-1 h-4 w-4 shrink-0 accent-primary"
                   />
@@ -618,7 +712,9 @@ export function TasksSection({
                       <Chip className={priorityStyles[task.priority]}>
                         {task.priority[0].toUpperCase() + task.priority.slice(1)}
                       </Chip>
-                      {task.job && <Chip className="bg-amber-50 text-amber-700">💼 {task.job}</Chip>}
+                      {jobName(jobs, task.jobId) && (
+                        <Chip className="bg-amber-50 text-amber-700">💼 {jobName(jobs, task.jobId)}</Chip>
+                      )}
                       {task.due && (
                         <Chip className={overdue ? "bg-rose-100 text-rose-800" : "bg-blue-50 text-blue-700"}>
                           {overdue ? "⚠️ Overdue · " : task.due === today ? "Due today · " : "📅 "}

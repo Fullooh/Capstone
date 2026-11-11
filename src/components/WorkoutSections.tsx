@@ -1,10 +1,11 @@
-import { useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { addDays, days, parseDays, startOfWeek, toDateKey } from "@/lib/schedule";
 import { formatClock, formatDate, textOrNull, todayKey } from "@/lib/page-utils";
 import { Chip, EmptyState, SectionIntro, inputClass } from "@/components/FolderPage";
+import { oldNumber, oldText, type SyncedListOptions } from "@/lib/synced-list";
 
 export type Workout = {
   id: number;
@@ -24,6 +25,61 @@ export type WorkoutSession = {
   intensity: Intensity;
   notes: string;
 };
+
+const isIntensity = (value: unknown): value is Intensity =>
+  value === "easy" || value === "moderate" || value === "hard";
+
+// Supabase table workout_sessions (migrations/2026-11-11_browser_data_tables.sql).
+type SessionRow = {
+  date: string;
+  workout: string;
+  minutes: number | null;
+  intensity: Intensity;
+  notes: string | null;
+};
+
+export function sessionTable(userId: string | null): SyncedListOptions<WorkoutSession, SessionRow> {
+  return {
+    table: "workout_sessions",
+    userId,
+    label: "workout log",
+    fromRow: (row) => ({
+      id: row.id,
+      date: row.date,
+      workout: row.workout,
+      minutes: row.minutes,
+      intensity: row.intensity,
+      notes: row.notes ?? "",
+    }),
+    toRow: (s) => ({
+      date: s.date,
+      workout: s.workout,
+      minutes: s.minutes,
+      intensity: s.intensity,
+      notes: s.notes || null,
+    }),
+    legacy: userId
+      ? {
+          key: `my-schedule-360-workout-${userId}`,
+          field: "log",
+          toItem: (old) => {
+            const date = oldText(old.date);
+            const workout = oldText(old.workout);
+            if (!date || !workout) return null;
+            const minutes = oldNumber(old.minutes);
+            return {
+              id: oldText(old.id) ?? "",
+              date,
+              workout,
+              minutes: minutes === null ? null : Math.round(minutes),
+              intensity: isIntensity(old.intensity) ? old.intensity : "moderate",
+              notes: oldText(old.notes) ?? "",
+            };
+          },
+        }
+      : undefined,
+  };
+}
 
 const intensityStyles: Record<Intensity, string> = {
   easy: "bg-sky-50 text-sky-700",
@@ -279,17 +335,20 @@ export function RoutineSection({
 export function LogSection({
   workouts,
   sessions,
-  setSessions,
   onLog,
+  onUpdate,
+  onDelete,
 }: {
   workouts: Workout[];
   sessions: WorkoutSession[];
-  setSessions: Dispatch<SetStateAction<WorkoutSession[]>>;
-  onLog: (session: Omit<WorkoutSession, "id">) => void;
+  onLog: (session: Omit<WorkoutSession, "id">) => Promise<WorkoutSession | null>;
+  onUpdate: (id: string, changes: Omit<WorkoutSession, "id">) => Promise<boolean>;
+  onDelete: (id: string) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState<WorkoutSession | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
@@ -300,29 +359,28 @@ export function LogSection({
       return;
     }
 
-    const minutes = Number(data.get("minutes"));
+    const minutes = Math.round(Number(data.get("minutes")));
+    const intensity = data.get("intensity");
     const entry = {
       date,
       workout,
       minutes: minutes > 0 ? minutes : null,
-      intensity: (data.get("intensity") as Intensity) ?? "moderate",
+      intensity: isIntensity(intensity) ? intensity : "moderate",
       notes: textOrNull(data.get("notes")) ?? "",
     };
 
-    if (editing) {
-      setSessions((current) => current.map((s) => (s.id === editing.id ? { ...s, ...entry } : s)));
-      toast.success("Session updated");
-    } else {
-      onLog(entry);
-      toast.success("Session logged");
-    }
+    setSaving(true);
+    const ok = editing ? await onUpdate(editing.id, entry) : (await onLog(entry)) !== null;
+    setSaving(false);
+    if (!ok) return;
+    toast.success(editing ? "Session updated" : "Session logged");
     form.reset();
     setEditing(null);
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!window.confirm("Delete this session from your log?")) return;
-    setSessions((current) => current.filter((s) => s.id !== id));
+    if (!(await onDelete(id))) return;
     if (editing?.id === id) setEditing(null);
     toast.success("Session deleted");
   }
@@ -332,7 +390,7 @@ export function LogSection({
   return (
     <div>
       <SectionIntro eyebrow="Track what you did" title="Workout Log">
-        Record each session you finish. Your log is saved in this browser.
+        Record each session you finish.
       </SectionIntro>
 
       <form
@@ -416,7 +474,9 @@ export function LogSection({
               Cancel
             </Button>
           )}
-          <Button type="submit">{editing ? "Update Session" : "Log Session"}</Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Saving..." : editing ? "Update Session" : "Log Session"}
+          </Button>
         </div>
       </form>
 

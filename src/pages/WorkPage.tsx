@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { startOfWeek, toDateKey } from "@/lib/schedule";
-import { todayKey, useLocalList, useRequireUser } from "@/lib/page-utils";
+import { todayKey, useRequireUser } from "@/lib/page-utils";
+import { useSyncedList } from "@/lib/synced-list";
 import {
   FolderLayout,
   FolderPageLoading,
@@ -15,10 +16,10 @@ import {
   HoursSection,
   JobsSection,
   TasksSection,
+  shiftTable,
+  taskTable,
   weeklyHours,
   type Job,
-  type Shift,
-  type WorkTask,
 } from "@/components/WorkSections";
 
 type Section = "jobs" | "hours" | "tasks";
@@ -39,10 +40,12 @@ export function WorkPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Jobs live in Supabase (they feed the Schedule page); the hours log and tasks
-  // are kept in this browser for now, like the Personal diary.
-  const [shifts, setShifts] = useLocalList<Shift>("work", "shifts", userId);
-  const [tasks, setTasks] = useLocalList<WorkTask>("work", "tasks", userId);
+  // Hours log and tasks load after the jobs, so old browser entries can be matched to a job.
+  const jobsReady = loading ? null : userId;
+  const shiftList = useSyncedList(shiftTable(jobsReady, jobs));
+  const taskList = useSyncedList(taskTable(jobsReady, jobs));
+  const shifts = shiftList.items;
+  const tasks = taskList.items;
 
   async function loadJobs() {
     const { data, error } = await supabase
@@ -71,7 +74,7 @@ export function WorkPage() {
   const openTasks = tasks.filter((t) => !t.done);
   const overdue = openTasks.filter((t) => t.due && t.due < todayKey()).length;
 
-  if (loading) return <FolderPageLoading message="Loading your work space..." />;
+  if (loading || shiftList.loading || taskList.loading) return <FolderPageLoading message="Loading your work space..." />;
 
   return (
     <FolderPageShell>
@@ -122,8 +125,8 @@ export function WorkPage() {
             onRemoved={(id) => setJobs((current) => current.filter((j) => j.id !== id))}
           />
         )}
-        {active === "hours" && <HoursSection jobs={jobs} shifts={shifts} setShifts={setShifts} />}
-        {active === "tasks" && <TasksSection jobs={jobs} tasks={tasks} setTasks={setTasks} />}
+        {active === "hours" && <HoursSection jobs={jobs} shifts={shifts} actions={shiftList} />}
+        {active === "tasks" && <TasksSection jobs={jobs} tasks={tasks} actions={taskList} />}
       </FolderLayout>
     </FolderPageShell>
   );

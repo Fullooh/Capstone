@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { Link, navigate } from "@/lib/router";
 import { Button } from "@/components/ui/button";
+import { oldText, useSyncedList, type SyncedListOptions } from "@/lib/synced-list";
 
 type Section = "activities" | "diary";
 
@@ -22,35 +23,30 @@ type DiaryEntry = {
   date: string;
 };
 
-function getStorageKey(userId: string) {
-  return `my-schedule-360-personal-${userId}`;
-}
+// Supabase table diary_entries (migrations/2026-11-11_browser_data_tables.sql).
+type DiaryRow = { date: string; title: string; content: string };
 
-function readDiary(userId: string): DiaryEntry[] {
-  try {
-    const stored = localStorage.getItem(getStorageKey(userId));
-    if (!stored) return [];
-
-    const parsed = JSON.parse(stored);
-    return Array.isArray(parsed.diary) ? parsed.diary : [];
-  } catch {
-    toast.error("Couldn't load your diary entries");
-    return [];
-  }
-}
-
-function saveDiary(userId: string, diary: DiaryEntry[]) {
-  try {
-    const stored = localStorage.getItem(getStorageKey(userId));
-    const previous = stored ? JSON.parse(stored) : {};
-
-    localStorage.setItem(
-      getStorageKey(userId),
-      JSON.stringify({ ...previous, diary }),
-    );
-  } catch {
-    toast.error("Couldn't save your diary in this browser");
-  }
+function diaryTable(userId: string | null): SyncedListOptions<DiaryEntry, DiaryRow> {
+  return {
+    table: "diary_entries",
+    userId,
+    label: "diary",
+    fromRow: (row) => ({ id: row.id, date: row.date, title: row.title, content: row.content }),
+    toRow: (entry) => ({ date: entry.date, title: entry.title, content: entry.content }),
+    legacy: userId
+      ? {
+          key: `my-schedule-360-personal-${userId}`,
+          field: "diary",
+          toItem: (old) => {
+            const title = oldText(old.title);
+            const content = oldText(old.content);
+            const date = oldText(old.date);
+            if (!title || !content || !date) return null;
+            return { id: oldText(old.id) ?? "", title, content, date };
+          },
+        }
+      : undefined,
+  };
 }
 
 function formatDate(date: string) {
@@ -81,7 +77,9 @@ export function PersonalPage() {
   const [activeSection, setActiveSection] = useState<Section>("activities");
   const [userId, setUserId] = useState<string | null>(null);
   const [activities, setActivities] = useState<PersonalActivity[]>([]);
-  const [diary, setDiary] = useState<DiaryEntry[]>([]);
+  const diaryList = useSyncedList(diaryTable(userId));
+  const diary = diaryList.items;
+  const [savingDiary, setSavingDiary] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingActivity, setSavingActivity] = useState(false);
   const [deletingActivityId, setDeletingActivityId] = useState<number | null>(null);
@@ -127,7 +125,6 @@ export function PersonalPage() {
       if (!mounted) return;
 
       setUserId(user.id);
-      setDiary(readDiary(user.id));
 
       await loadActivities();
 
@@ -142,13 +139,6 @@ export function PersonalPage() {
       mounted = false;
     };
   }, []);
-
-  // Save diary entries in user-specific local storage.
-  useEffect(() => {
-    if (!userId || loading) return;
-
-    saveDiary(userId, diary);
-  }, [diary, userId, loading]);
 
   // Personal Overview calculations.
   const totalActivities = activities.length;
@@ -297,7 +287,7 @@ export function PersonalPage() {
   }
 
   // Add or update a diary entry.
-  function handleDiarySubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleDiarySubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!diaryForm.title.trim() || !diaryForm.content.trim()) {
@@ -305,27 +295,14 @@ export function PersonalPage() {
       return;
     }
 
-    if (editingDiaryId) {
-      setDiary((current) =>
-        current.map((entry) =>
-          entry.id === editingDiaryId
-            ? { ...entry, ...diaryForm }
-            : entry,
-        ),
-      );
+    setSavingDiary(true);
+    const ok = editingDiaryId
+      ? await diaryList.update(editingDiaryId, diaryForm)
+      : (await diaryList.add(diaryForm)) !== null;
+    setSavingDiary(false);
+    if (!ok) return;
 
-      toast.success("Diary entry updated");
-    } else {
-      const newEntry: DiaryEntry = {
-        id: crypto.randomUUID(),
-        ...diaryForm,
-      };
-
-      setDiary((current) => [newEntry, ...current]);
-
-      toast.success("Diary entry saved");
-    }
-
+    toast.success(editingDiaryId ? "Diary entry updated" : "Diary entry saved");
     resetDiaryForm();
   }
 
@@ -346,14 +323,12 @@ export function PersonalPage() {
   }
 
   // Delete a diary entry.
-  function deleteDiaryEntry(id: string) {
+  async function deleteDiaryEntry(id: string) {
     if (!window.confirm("Are you sure you want to delete this diary entry?")) {
       return;
     }
 
-    setDiary((current) =>
-      current.filter((entry) => entry.id !== id),
-    );
+    if (!(await diaryList.remove(id))) return;
 
     if (editingDiaryId === id) {
       resetDiaryForm();
@@ -377,7 +352,7 @@ export function PersonalPage() {
     },
   ];
 
-  if (loading) {
+  if (loading || diaryList.loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-muted/30">
         <p className="text-sm text-muted-foreground">
@@ -847,8 +822,8 @@ export function PersonalPage() {
                   </label>
 
                   <div className="flex flex-wrap gap-3">
-                    <Button type="submit">
-                      {editingDiaryId ? "Update Entry" : "Save Entry"}
+                    <Button type="submit" disabled={savingDiary}>
+                      {savingDiary ? "Saving..." : editingDiaryId ? "Update Entry" : "Save Entry"}
                     </Button>
 
                     {editingDiaryId && (

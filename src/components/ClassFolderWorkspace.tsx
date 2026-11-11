@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 import { toast } from "sonner";
 import { SchoolTools } from "@/components/SchoolTools";
 import type { Subject } from "@/lib/subjects";
+import { oldNumber, oldText, useSyncedList, type SyncedListOptions } from "@/lib/synced-list";
 
 type Tab = "assignments" | "flashcards" | "notes";
 
@@ -13,6 +14,44 @@ type Note = {
   content: string;
   updatedAt: string;
 };
+
+// Supabase table class_notes (migrations/2026-11-11_browser_data_tables.sql).
+type NoteRow = { subject_id: number; title: string; content: string; updated_at: string };
+
+function classNoteTable(userId: string): SyncedListOptions<Note, NoteRow> {
+  return {
+    table: "class_notes",
+    userId,
+    label: "class notes",
+    fromRow: (row) => ({
+      id: row.id,
+      subjectId: row.subject_id,
+      title: row.title,
+      content: row.content,
+      updatedAt: row.updated_at,
+    }),
+    toRow: (note) => ({
+      subject_id: note.subjectId,
+      title: note.title,
+      content: note.content,
+      updated_at: note.updatedAt,
+    }),
+    legacy: {
+      key: `ms360-${userId}-class-notes`,
+      toItem: (old) => {
+        const subjectId = oldNumber(old.subjectId);
+        if (subjectId === null) return null;
+        return {
+          id: oldText(old.id) ?? "",
+          subjectId,
+          title: oldText(old.title) || "Untitled note",
+          content: oldText(old.content) ?? "",
+          updatedAt: oldText(old.updatedAt) ?? new Date().toISOString(),
+        };
+      },
+    },
+  };
+}
 
 type Props = {
   userId: string;
@@ -31,42 +70,19 @@ export function ClassFolderWorkspace({
   onBack,
   onEditClass,
 }: Props) {
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const noteList = useSyncedList(classNoteTable(userId));
+  const notes = noteList.items;
+  const loaded = !noteList.loading;
+  const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
-
-  const storageKey = `ms360-${userId}-class-notes`;
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      const parsed = saved ? JSON.parse(saved) : [];
-      setNotes(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      toast.error("Couldn't load class notes.");
-      setNotes([]);
-    } finally {
-      setLoaded(true);
-    }
-  }, [storageKey]);
-
-  useEffect(() => {
-    if (!loaded) return;
-
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(notes));
-    } catch {
-      toast.error("Couldn't save notes in this browser.");
-    }
-  }, [notes, storageKey, loaded]);
 
   const classNotes = notes
     .filter((note) => note.subjectId === subject.id)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
-  function saveNote(event: FormEvent<HTMLFormElement>) {
+  async function saveNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!noteTitle.trim() && !noteContent.trim()) {
@@ -76,35 +92,20 @@ export function ClassFolderWorkspace({
 
     const now = new Date().toISOString();
 
-    if (editingId) {
-      setNotes((current) =>
-        current.map((note) =>
-          note.id === editingId
-            ? {
-                ...note,
-                title: noteTitle.trim() || "Untitled note",
-                content: noteContent,
-                updatedAt: now,
-              }
-            : note
-        )
-      );
+    const fields = {
+      title: noteTitle.trim() || "Untitled note",
+      content: noteContent,
+      updatedAt: now,
+    };
 
-      toast.success("Note updated.");
-    } else {
-      setNotes((current) => [
-        ...current,
-        {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          subjectId: subject.id,
-          title: noteTitle.trim() || "Untitled note",
-          content: noteContent,
-          updatedAt: now,
-        },
-      ]);
+    setSaving(true);
+    const ok = editingId
+      ? await noteList.update(editingId, fields)
+      : (await noteList.add({ ...fields, subjectId: subject.id })) !== null;
+    setSaving(false);
+    if (!ok) return;
 
-      toast.success("Note saved.");
-    }
+    toast.success(editingId ? "Note updated." : "Note saved.");
 
     setEditingId(null);
     setNoteTitle("");
@@ -117,12 +118,10 @@ export function ClassFolderWorkspace({
     setNoteContent(note.content);
   }
 
-  function deleteNote(id: string) {
+  async function deleteNote(id: string) {
     if (!window.confirm("Delete this note?")) return;
 
-    setNotes((current) =>
-      current.filter((note) => note.id !== id)
-    );
+    if (!(await noteList.remove(id))) return;
 
     if (editingId === id) {
       setEditingId(null);
@@ -236,7 +235,8 @@ export function ClassFolderWorkspace({
             <div className="flex gap-2">
               <button
                 type="submit"
-                className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
+                disabled={saving}
+                className="disabled:opacity-60 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
               >
                 {editingId ? "Save changes" : "Save note"}
               </button>

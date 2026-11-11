@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { Subject } from "@/lib/subjects";
+import { oldNumber, oldText, useSyncedList, type SyncedListOptions } from "@/lib/synced-list";
 
 type Priority = "high" | "medium" | "low";
 type AssignmentFilter = "all" | "upcoming" | "completed" | "overdue";
@@ -70,8 +71,103 @@ function getDeadlineLabel(dateString: string) {
   return `Due ${formatDate(dateString)}`;
 }
 
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+const isPriority = (value: unknown): value is Priority =>
+  value === "low" || value === "medium" || value === "high";
+
+// Supabase tables assignments and flashcards (migrations/2026-11-11_browser_data_tables.sql).
+type AssignmentRow = {
+  subject_id: number;
+  title: string;
+  due_date: string;
+  priority: Priority;
+  completed: boolean;
+};
+
+type FlashcardRow = {
+  subject_id: number;
+  question: string;
+  answer: string;
+  review_status: "known" | "review" | null;
+};
+
+function assignmentTable(userId: string): SyncedListOptions<Assignment, AssignmentRow> {
+  return {
+    table: "assignments",
+    userId,
+    label: "assignments",
+    ascending: true,
+    fromRow: (row) => ({
+      id: row.id,
+      title: row.title,
+      subjectId: row.subject_id,
+      dueDate: row.due_date,
+      completed: row.completed,
+      priority: row.priority,
+    }),
+    toRow: (a) => ({
+      subject_id: a.subjectId,
+      title: a.title,
+      due_date: a.dueDate,
+      priority: a.priority ?? "medium",
+      completed: a.completed,
+    }),
+    legacy: {
+      key: `ms360-${userId}-assignments`,
+      toItem: (old) => {
+        const title = oldText(old.title);
+        const subjectId = oldNumber(old.subjectId);
+        const dueDate = oldText(old.dueDate);
+        if (!title || subjectId === null || !dueDate) return null;
+        return {
+          id: oldText(old.id) ?? "",
+          title,
+          subjectId,
+          dueDate,
+          completed: old.completed === true,
+          priority: isPriority(old.priority) ? old.priority : "medium",
+        };
+      },
+    },
+  };
+}
+
+function flashcardTable(userId: string): SyncedListOptions<Flashcard, FlashcardRow> {
+  return {
+    table: "flashcards",
+    userId,
+    label: "flashcards",
+    ascending: true,
+    fromRow: (row) => ({
+      id: row.id,
+      subjectId: row.subject_id,
+      question: row.question,
+      answer: row.answer,
+      reviewStatus: row.review_status ?? undefined,
+    }),
+    toRow: (card) => ({
+      subject_id: card.subjectId,
+      question: card.question,
+      answer: card.answer,
+      review_status: card.reviewStatus ?? null,
+    }),
+    legacy: {
+      key: `ms360-${userId}-flashcards`,
+      toItem: (old) => {
+        const question = oldText(old.question);
+        const answer = oldText(old.answer);
+        const subjectId = oldNumber(old.subjectId);
+        if (!question || !answer || subjectId === null) return null;
+        return {
+          id: oldText(old.id) ?? "",
+          subjectId,
+          question,
+          answer,
+          reviewStatus:
+            old.reviewStatus === "known" || old.reviewStatus === "review" ? old.reviewStatus : undefined,
+        };
+      },
+    },
+  };
 }
 
 const priorityStyles: Record<Priority, string> = {
@@ -86,9 +182,12 @@ export function SchoolTools({
   mode,
   selectedSubjectId,
 }: Props) {
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const assignmentList = useSyncedList(assignmentTable(userId));
+  const flashcardList = useSyncedList(flashcardTable(userId));
+  const assignments = assignmentList.items;
+  const flashcards = flashcardList.items;
+  const loaded = !assignmentList.loading && !flashcardList.loading;
+  const [saving, setSaving] = useState(false);
 
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -114,70 +213,11 @@ export function SchoolTools({
   const [studyOrder, setStudyOrder] = useState<string[]>([]);
   const [revealed, setRevealed] = useState<string[]>([]);
 
-  const assignmentKey = `ms360-${userId}-assignments`;
-  const flashcardKey = `ms360-${userId}-flashcards`;
-
   useEffect(() => {
     setStudyMode(false);
     setStudyIndex(0);
     setRevealed([]);
   }, [selectedSubjectId]);
-
-  useEffect(() => {
-    setLoaded(false);
-
-    try {
-      const savedAssignments = localStorage.getItem(assignmentKey);
-      const savedFlashcards = localStorage.getItem(flashcardKey);
-
-      const parsedAssignments: Assignment[] = savedAssignments
-        ? JSON.parse(savedAssignments)
-        : [];
-
-      const parsedFlashcards: Flashcard[] = savedFlashcards
-        ? JSON.parse(savedFlashcards)
-        : [];
-
-      setAssignments(
-        Array.isArray(parsedAssignments)
-          ? parsedAssignments.map((item) => ({
-              ...item,
-              priority: item.priority ?? "medium",
-            }))
-          : []
-      );
-
-      setFlashcards(
-        Array.isArray(parsedFlashcards) ? parsedFlashcards : []
-      );
-    } catch {
-      toast.error("Couldn't load saved school tools.");
-      setAssignments([]);
-      setFlashcards([]);
-    } finally {
-      setLoaded(true);
-    }
-  }, [assignmentKey, flashcardKey]);
-
-  useEffect(() => {
-    if (!loaded) return;
-
-    try {
-      localStorage.setItem(assignmentKey, JSON.stringify(assignments));
-    } catch {
-      toast.error("Couldn't save assignments in this browser.");
-    }
-  }, [assignments, assignmentKey, loaded]);
-
-  useEffect(() => {
-    if (!loaded) return;
-
-    try {
-      localStorage.setItem(flashcardKey, JSON.stringify(flashcards));
-    } catch {
-      toast.error("Couldn't save flashcards in this browser.");
-    }
-  }, [flashcards, flashcardKey, loaded]);
 
   const today = getLocalDateString();
 
@@ -299,7 +339,7 @@ export function SchoolTools({
 
   const currentStudyCard = activeStudyCards[studyIndex];
 
-  function addAssignment(event: React.FormEvent<HTMLFormElement>) {
+  async function addAssignment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (selectedSubjectId === undefined) {
@@ -312,17 +352,16 @@ export function SchoolTools({
       return;
     }
 
-    setAssignments((current) => [
-      ...current,
-      {
-        id: makeId(),
-        title: title.trim(),
-        subjectId: selectedSubjectId,
-        dueDate,
-        completed: false,
-        priority,
-      },
-    ]);
+    setSaving(true);
+    const saved = await assignmentList.add({
+      title: title.trim(),
+      subjectId: selectedSubjectId,
+      dueDate,
+      completed: false,
+      priority,
+    });
+    setSaving(false);
+    if (!saved) return;
 
     setTitle("");
     setDueDate("");
@@ -331,7 +370,7 @@ export function SchoolTools({
     toast.success("Assignment added.");
   }
 
-  function addFlashcard(event: React.FormEvent<HTMLFormElement>) {
+  async function addFlashcard(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (selectedSubjectId === undefined) {
@@ -344,15 +383,14 @@ export function SchoolTools({
       return;
     }
 
-    setFlashcards((current) => [
-      ...current,
-      {
-        id: makeId(),
-        subjectId: selectedSubjectId,
-        question: question.trim(),
-        answer: answer.trim(),
-      },
-    ]);
+    setSaving(true);
+    const saved = await flashcardList.add({
+      subjectId: selectedSubjectId,
+      question: question.trim(),
+      answer: answer.trim(),
+    });
+    setSaving(false);
+    if (!saved) return;
 
     setQuestion("");
     setAnswer("");
@@ -361,27 +399,16 @@ export function SchoolTools({
   }
 
   function toggleComplete(id: string) {
-    setAssignments((current) =>
-      current.map((item) =>
-        item.id === id
-          ? { ...item, completed: !item.completed }
-          : item
-      )
-    );
+    const item = assignments.find((assignment) => assignment.id === id);
+    if (item) assignmentList.update(id, { completed: !item.completed });
   }
 
-  function deleteAssignment(id: string) {
-    setAssignments((current) =>
-      current.filter((item) => item.id !== id)
-    );
-
-    toast.success("Assignment deleted.");
+  async function deleteAssignment(id: string) {
+    if (await assignmentList.remove(id)) toast.success("Assignment deleted.");
   }
 
-  function deleteFlashcard(id: string) {
-    setFlashcards((current) =>
-      current.filter((item) => item.id !== id)
-    );
+  async function deleteFlashcard(id: string) {
+    if (!(await flashcardList.remove(id))) return;
 
     setRevealed((current) =>
       current.filter((item) => item !== id)
@@ -407,13 +434,7 @@ export function SchoolTools({
     id: string,
     status: "known" | "review"
   ) {
-    setFlashcards((current) =>
-      current.map((card) =>
-        card.id === id
-          ? { ...card, reviewStatus: status }
-          : card
-      )
-    );
+    flashcardList.update(id, { reviewStatus: status });
 
     setRevealed((current) =>
       current.filter((item) => item !== id)
@@ -671,7 +692,8 @@ export function SchoolTools({
 
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:-translate-y-0.5 hover:opacity-90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              disabled={saving}
+              className="disabled:opacity-60 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:-translate-y-0.5 hover:opacity-90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             >
               <span aria-hidden="true">+</span> Add assignment
             </button>
@@ -1220,7 +1242,8 @@ export function SchoolTools({
 
             <button
               type="submit"
-              className="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:-translate-y-0.5 hover:opacity-90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              disabled={saving}
+              className="disabled:opacity-60 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:-translate-y-0.5 hover:opacity-90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             >
               + Create flashcard
             </button>
