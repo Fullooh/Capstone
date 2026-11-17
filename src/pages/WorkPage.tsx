@@ -1,6 +1,8 @@
+
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { Link } from "@/lib/router";
 import { startOfWeek, toDateKey } from "@/lib/schedule";
 import { todayKey, useRequireUser } from "@/lib/page-utils";
 import { useSyncedList } from "@/lib/synced-list";
@@ -25,9 +27,24 @@ import {
 type Section = "jobs" | "hours" | "tasks";
 
 const navigation: FolderNavItem<Section>[] = [
-  { id: "jobs", label: "Jobs & Shifts", icon: "💼", description: "Your regular work schedule" },
-  { id: "hours", label: "Hours Log", icon: "⏱️", description: "Hours worked and pay" },
-  { id: "tasks", label: "Work Tasks", icon: "✅", description: "To-dos and deadlines" },
+  {
+    id: "jobs",
+    label: "Jobs & Shifts",
+    icon: "💼",
+    description: "Your regular work schedule",
+  },
+  {
+    id: "hours",
+    label: "Hours Log",
+    icon: "⏱️",
+    description: "Hours worked and pay",
+  },
+  {
+    id: "tasks",
+    label: "Work Tasks",
+    icon: "✅",
+    description: "To-dos and deadlines",
+  },
 ];
 
 function formatHours(hours: number) {
@@ -54,9 +71,12 @@ export function WorkPage() {
       .order("created_at", { ascending: true });
 
     if (error) {
-      toast.error("Couldn't load work information", { description: error.message });
+      toast.error("Couldn't load work information", {
+        description: error.message,
+      });
       return;
     }
+
     setJobs(data ?? []);
   }
 
@@ -66,15 +86,25 @@ export function WorkPage() {
   }, [userId]);
 
   // Overview numbers
-  const scheduledHours = jobs.reduce((sum, job) => sum + (weeklyHours(job) ?? 0), 0);
+  const scheduledHours = jobs.reduce(
+    (sum, job) => sum + (weeklyHours(job) ?? 0),
+    0
+  );
+
   const weekStart = toDateKey(startOfWeek(new Date()));
+
   const loggedThisWeek = shifts
     .filter((s) => s.date >= weekStart && s.date <= todayKey())
     .reduce((sum, s) => sum + s.hours, 0);
-  const openTasks = tasks.filter((t) => !t.done);
-  const overdue = openTasks.filter((t) => t.due && t.due < todayKey()).length;
 
-  if (loading || shiftList.loading || taskList.loading) return <FolderPageLoading message="Loading your work space..." />;
+  const openTasks = tasks.filter((t) => !t.done);
+  const overdue = openTasks.filter(
+    (t) => t.due && t.due < todayKey()
+  ).length;
+
+  if (loading || shiftList.loading || taskList.loading) {
+    return <FolderPageLoading message="Loading your work space..." />;
+  }
 
   return (
     <FolderPageShell>
@@ -84,6 +114,14 @@ export function WorkPage() {
         eyebrow="Your Professional Life"
         title="Work"
         description="Keep your jobs, hours and work to-dos in one place, balanced with the rest of your week."
+        action={
+          <Link
+            href="/schedule"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border bg-background px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-muted"
+          >
+            📅 Schedule
+          </Link>
+        }
       />
 
       <OverviewStats
@@ -112,21 +150,44 @@ export function WorkPage() {
             label: "Open Tasks",
             value: openTasks.length,
             icon: "✅",
-            description: overdue ? `${overdue} overdue` : "Nothing overdue",
+            description: overdue
+              ? `${overdue} overdue`
+              : "Nothing overdue",
           },
         ]}
       />
 
-      <FolderLayout title="Work Folders" items={navigation} active={active} onSelect={setActive}>
+      <FolderLayout
+        title="Work Folders"
+        items={navigation}
+        active={active}
+        onSelect={setActive}
+      >
         {active === "jobs" && (
           <JobsSection
             jobs={jobs}
             onChanged={loadJobs}
-            onRemoved={(id) => setJobs((current) => current.filter((j) => j.id !== id))}
+            onRemoved={(id) =>
+              setJobs((current) => current.filter((j) => j.id !== id))
+            }
           />
         )}
-        {active === "hours" && <HoursSection jobs={jobs} shifts={shifts} actions={shiftList} />}
-        {active === "tasks" && <TasksSection jobs={jobs} tasks={tasks} actions={taskList} />}
+
+        {active === "hours" && (
+          <HoursSection
+            jobs={jobs}
+            shifts={shifts}
+            actions={shiftList}
+          />
+        )}
+
+        {active === "tasks" && (
+          <TasksSection
+            jobs={jobs}
+            tasks={tasks}
+            actions={taskList}
+          />
+        )}
       </FolderLayout>
     </FolderPageShell>
   );

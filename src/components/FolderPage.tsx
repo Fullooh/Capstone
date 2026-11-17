@@ -1,3 +1,4 @@
+
 import type { ReactNode } from "react";
 import { Link } from "@/lib/router";
 
@@ -42,21 +43,24 @@ export function PageHeader({
   eyebrow,
   title,
   description,
+  action,
 }: {
   icon: string;
-  iconClassName: string; // e.g. "bg-emerald-100"
+  iconClassName: string;
   eyebrow: string;
   title: string;
   description: string;
+  action?: ReactNode;
 }) {
   return (
-    <header className="mt-6 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
+    <header className="mt-6 flex flex-col justify-between gap-5 rounded-2xl border bg-card p-6 shadow-sm sm:flex-row sm:items-center sm:p-8">
       <div className="flex items-center gap-4">
         <div
           className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-3xl ${iconClassName}`}
         >
           {icon}
         </div>
+
         <div>
           <p className="text-sm font-medium text-primary">{eyebrow}</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight">{title}</h1>
@@ -65,6 +69,8 @@ export function PageHeader({
           </p>
         </div>
       </div>
+
+      {action && <div className="flex shrink-0 items-center">{action}</div>}
     </header>
   );
 }
@@ -94,13 +100,18 @@ export function OverviewStats({
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="rounded-2xl border bg-card p-5 shadow-sm">
+          <div
+            key={stat.label}
+            className="rounded-2xl border bg-card p-5 shadow-sm"
+          >
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">{stat.label}</p>
               <span className="text-xl">{stat.icon}</span>
             </div>
             <p className="mt-3 text-3xl font-bold">{stat.value}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{stat.description}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {stat.description}
+            </p>
           </div>
         ))}
       </div>
@@ -138,6 +149,7 @@ export function FolderLayout<T extends string>({
         <nav className="space-y-2">
           {items.map((item) => {
             const selected = active === item.id;
+
             return (
               <button
                 key={item.id}
@@ -152,11 +164,16 @@ export function FolderLayout<T extends string>({
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-background/70 text-lg">
                   {item.icon}
                 </span>
+
                 <span className="min-w-0">
-                  <span className="block text-sm font-semibold">{item.label}</span>
+                  <span className="block text-sm font-semibold">
+                    {item.label}
+                  </span>
                   <span
                     className={`mt-1 block text-xs ${
-                      selected ? "text-primary-foreground/80" : "text-muted-foreground"
+                      selected
+                        ? "text-primary-foreground/80"
+                        : "text-muted-foreground"
                     }`}
                   >
                     {item.description}
@@ -206,12 +223,20 @@ export function EmptyState({
     <div className="rounded-xl border border-dashed px-5 py-12 text-center">
       <div className="text-4xl">{icon}</div>
       <h3 className="mt-4 font-semibold">{title}</h3>
-      <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">{children}</p>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+        {children}
+      </p>
     </div>
   );
 }
 
-export function Chip({ className, children }: { className: string; children: ReactNode }) {
+export function Chip({
+  className,
+  children,
+}: {
+  className: string;
+  children: ReactNode;
+}) {
   return (
     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${className}`}>
       {children}

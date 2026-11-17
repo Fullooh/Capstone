@@ -1,6 +1,8 @@
+
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { Link } from "@/lib/router";
 import { addDays, startOfWeek, toDateKey } from "@/lib/schedule";
 import { todayKey, useLocalState, useRequireUser } from "@/lib/page-utils";
 import { useSyncedList } from "@/lib/synced-list";
@@ -91,6 +93,14 @@ export function WorkoutPage() {
         eyebrow="Your Fitness Space"
         title="Workout"
         description="Plan your training week, log what you finish, and keep your streak going."
+        action={
+          <Link
+            href="/schedule"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border bg-background px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-muted"
+          >
+            📅 Schedule
+          </Link>
+        }
       />
 
       <OverviewStats

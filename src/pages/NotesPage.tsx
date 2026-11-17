@@ -475,21 +475,30 @@ export function NotesPage() {
               </p>
             </div>
 
-            <a
-              href="#note-form"
-              onClick={() => {
-                setActiveView("all");
-                setForm({
-                  title: "",
-                  category: "general",
-                  body: "",
-                });
-                setEditingId(null);
-              }}
-              className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
-            >
-              + Create Note
-            </a>
+            <div className="flex shrink-0 flex-col gap-3 sm:flex-row">
+              <Link
+                href="/schedule"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border bg-background px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-muted"
+              >
+                📅 Schedule
+              </Link>
+
+              <a
+                href="#note-form"
+                onClick={() => {
+                  setActiveView("all");
+                  setForm({
+                    title: "",
+                    category: "general",
+                    body: "",
+                  });
+                  setEditingId(null);
+                }}
+                className="inline-flex items-center justify-center rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+              >
+                + Create Note
+              </a>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t bg-muted/20 px-6 py-3 text-xs text-muted-foreground sm:px-8">
@@ -681,9 +690,7 @@ export function NotesPage() {
                     />
                   </div>
 
-                  {/* Folder dropdown removed.
-                      The selected left sidebar folder determines
-                      the category when a note is created. */}
+                  {/* The selected sidebar folder determines the category. */}
 
                   <div className="space-y-2">
                     <label

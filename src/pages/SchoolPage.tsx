@@ -226,22 +226,31 @@ export function SchoolPage() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setEditing(null);
-              setActiveSection("classes");
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row">
+            <Link
+              href="/schedule"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border bg-background px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-muted"
+            >
+              📅 Schedule
+            </Link>
 
-              window.setTimeout(() => {
-                document
-                  .getElementById("class-form")
-                  ?.scrollIntoView({ behavior: "smooth" });
-              }, 0);
-            }}
-            className="rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
-          >
-            + Add a class
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setActiveSection("classes");
+
+                window.setTimeout(() => {
+                  document
+                    .getElementById("class-form")
+                    ?.scrollIntoView({ behavior: "smooth" });
+                }, 0);
+              }}
+              className="rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              + Add a class
+            </button>
+          </div>
         </header>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">

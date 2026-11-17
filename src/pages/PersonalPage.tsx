@@ -376,25 +376,34 @@ export function PersonalPage() {
 
         {/* Page Header */}
         <header className="mt-6 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-100 text-3xl">
-              🌿
+          <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-100 text-3xl">
+                🌿
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-primary">
+                  Your Personal Time
+                </p>
+
+                <h1 className="mt-1 text-3xl font-bold tracking-tight">
+                  Personal Space
+                </h1>
+
+                <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+                  Organize your personal responsibilities and keep a record of
+                  your experiences.
+                </p>
+              </div>
             </div>
 
-            <div>
-              <p className="text-sm font-medium text-primary">
-                Your Personal Time
-              </p>
-
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">
-                Personal Space
-              </h1>
-
-              <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-                Organize your personal responsibilities and keep a record of
-                your experiences.
-              </p>
-            </div>
+            <Link
+              href="/schedule"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border bg-background px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-muted"
+            >
+              📅 Schedule
+            </Link>
           </div>
         </header>
 
