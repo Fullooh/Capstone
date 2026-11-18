@@ -15,8 +15,11 @@ type Note = {
   title: string;
   category: string;
   body: string | null;
+  pinned: boolean; // ★ favorite
   created_at: string;
 };
+
+const NOTE_COLUMNS = "id, title, category, body, pinned, created_at";
 
 type NoteDraft = {
   title: string;
@@ -43,6 +46,8 @@ function getFoldersStorageKey(userId: string) {
   return `my-schedule-360-note-folders-${userId}`;
 }
 
+// Favorites used to be kept only in this browser under this key. On first load they're
+// copied into notes.pinned, then removed from the browser.
 function getFavoritesStorageKey(userId: string) {
   return `my-schedule-360-pinned-notes-${userId}`;
 }
@@ -95,7 +100,7 @@ function readFolders(userId: string): NoteFolder[] {
   }
 }
 
-function readFavorites(userId: string): number[] {
+function readLegacyFavorites(userId: string): number[] {
   try {
     const stored = localStorage.getItem(getFavoritesStorageKey(userId));
 
@@ -114,11 +119,45 @@ function readFavorites(userId: string): number[] {
   }
 }
 
+// One import per user at a time (React runs effects twice in dev).
+const favoriteImports = new Map<string, Promise<void>>();
+
+function importLegacyFavorites(userId: string) {
+  const running = favoriteImports.get(userId);
+  if (running) return running;
+
+  const job = (async () => {
+    const ids = readLegacyFavorites(userId);
+
+    if (ids.length > 0) {
+      const { error } = await supabase
+        .from("notes")
+        .update({ pinned: true })
+        .in("id", ids);
+
+      if (error) {
+        toast.error("Couldn't move your favorites to your account yet", {
+          description: error.message,
+        });
+        return; // keep them in the browser and try again next time
+      }
+    }
+
+    try {
+      localStorage.removeItem(getFavoritesStorageKey(userId));
+    } catch {
+      // storage blocked: nothing to clean up
+    }
+  })().finally(() => favoriteImports.delete(userId));
+
+  favoriteImports.set(userId, job);
+  return job;
+}
+
 export function NotesPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [folders, setFolders] = useState<NoteFolder[]>(DEFAULT_FOLDERS);
-  const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -151,11 +190,13 @@ export function NotesPage() {
 
       setUserId(currentUserId);
       setFolders(readFolders(currentUserId));
-      setFavoriteIds(readFavorites(currentUserId));
+
+      await importLegacyFavorites(currentUserId);
+      if (!active) return;
 
       const { data: noteData, error: noteError } = await supabase
         .from("notes")
-        .select("id, title, category, body, created_at")
+        .select(NOTE_COLUMNS)
         .order("created_at", { ascending: false });
 
       if (!active) return;
@@ -191,18 +232,10 @@ export function NotesPage() {
     }
   }, [folders, userId]);
 
-  useEffect(() => {
-    if (!userId) return;
-
-    try {
-      localStorage.setItem(
-        getFavoritesStorageKey(userId),
-        JSON.stringify(favoriteIds)
-      );
-    } catch {
-      toast.error("Couldn't save your favorites");
-    }
-  }, [favoriteIds, userId]);
+  const favoriteIds = useMemo(
+    () => notes.filter((note) => note.pinned).map((note) => note.id),
+    [notes]
+  );
 
   function updateForm(field: keyof NoteDraft, value: string) {
     setForm((current) => ({
@@ -267,7 +300,7 @@ export function NotesPage() {
             body: body || null,
           })
           .eq("id", editingId)
-          .select("id, title, category, body, created_at")
+          .select(NOTE_COLUMNS)
           .single();
 
         if (error) {
@@ -292,7 +325,7 @@ export function NotesPage() {
             category,
             body: body || null,
           })
-          .select("id, title, category, body, created_at")
+          .select(NOTE_COLUMNS)
           .single();
 
         if (error) {
@@ -356,10 +389,6 @@ export function NotesPage() {
         current.filter((note) => note.id !== id)
       );
 
-      setFavoriteIds((current) =>
-        current.filter((noteId) => noteId !== id)
-      );
-
       if (editingId === id) {
         resetForm();
       }
@@ -372,18 +401,35 @@ export function NotesPage() {
     }
   }
 
-  function toggleFavorite(id: number) {
-    const isFavorite = favoriteIds.includes(id);
+  async function toggleFavorite(id: number) {
+    const note = notes.find((item) => item.id === id);
+    if (!note) return;
 
-    setFavoriteIds((current) =>
-      isFavorite
-        ? current.filter((noteId) => noteId !== id)
-        : [...current, id]
-    );
+    const pinned = !note.pinned;
+    const setPinned = (value: boolean) =>
+      setNotes((current) =>
+        current.map((item) =>
+          item.id === id ? { ...item, pinned: value } : item
+        )
+      );
 
-    toast.success(
-      isFavorite ? "Removed from favorites" : "Added to favorites"
-    );
+    // Show it right away; undo if the save fails.
+    setPinned(pinned);
+
+    const { error } = await supabase
+      .from("notes")
+      .update({ pinned })
+      .eq("id", id);
+
+    if (error) {
+      setPinned(!pinned);
+      toast.error("Couldn't update favorites", {
+        description: error.message,
+      });
+      return;
+    }
+
+    toast.success(pinned ? "Added to favorites" : "Removed from favorites");
   }
 
   const filteredNotes = useMemo(() => {

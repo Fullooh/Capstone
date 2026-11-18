@@ -6,7 +6,8 @@
 -- migrations/2026-10-29_blocked_times.sql (greyed-out hours on the Schedule page),
 -- migrations/2026-10-29_saved_schedules.sql (the saved AI schedule),
 -- and migrations/2026-11-11_browser_data_tables.sql (work_shifts, work_tasks, workout_sessions,
--- assignments, flashcards, class_notes, diary_entries: data that used to be browser-only).
+-- assignments, flashcards, class_notes, diary_entries: data that used to be browser-only),
+-- and migrations/2026-11-18_goal_progress_and_pinned_notes.sql (goals.progress, notes.pinned).
 
 
 -- PROFILES: first/last name from the Signup page
@@ -80,6 +81,7 @@ create table public.notes (
   category text not null default 'general'
     check (category in ('general', 'school', 'work', 'personal', 'goal')),
   body text,
+  pinned boolean not null default false, -- ★ favorite (added 2026-11-18)
   created_at timestamptz not null default now()
 );
 
@@ -91,6 +93,7 @@ create table public.goals (
   priority text check (priority in ('low', 'medium', 'high')),
   deadline date,
   notes text,
+  progress integer not null default 0 check (progress between 0 and 100), -- % done, 100 = completed (added 2026-11-18)
   created_at timestamptz not null default now()
 );
 

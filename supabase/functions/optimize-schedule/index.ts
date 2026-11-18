@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
     supabase.from("work_info").select("job, work_days, start_time, end_time, priority"),
     supabase.from("workouts").select("workout_type, preferred_day, preferred_time"),
     supabase.from("personal_activities").select("activity, day, time"),
-    supabase.from("goals").select("goal, priority, deadline"),
+    supabase.from("goals").select("goal, priority, deadline, progress").lt("progress", 100), // skip completed goals
     supabase.from("blocked_times").select("day, hour"),
   ]);
 

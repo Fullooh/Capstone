@@ -1,23 +1,33 @@
-
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 import { Link } from "@/lib/router";
+import { useRequireUser } from "@/lib/page-utils";
 import { Button } from "@/components/ui/button";
 
 type Goal = {
-  id: string;
+  id: number;
   goal: string;
   priority: "low" | "medium" | "high" | null;
   deadline: string | null;
   notes: string | null;
-  progress: number;
+  progress: number; // 0-100, 100 = completed
   created_at: string;
 };
 
 type Section = "goals" | "achievements";
 
-const STORAGE_KEY = "my-schedule-360-goals";
+const GOAL_COLUMNS = "id, goal, priority, deadline, notes, progress, created_at";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const PROGRESS_SAVE_DELAY_MS = 400; // wait for the slider to settle before saving
+
+// Goals were briefly kept only in this browser under this key (2026-11-17).
+// On first load they're copied into the goals table, then removed from the browser.
+const LEGACY_STORAGE_KEY = "my-schedule-360-goals";
+
+function clampProgress(value: unknown) {
+  return Math.min(100, Math.max(0, Math.round(Number(value) || 0)));
+}
 
 function deadlineDate(deadline: string) {
   return new Date(`${deadline}T00:00`);
@@ -31,49 +41,121 @@ function formatDeadline(deadline: string) {
   });
 }
 
+// One import at a time (React runs effects twice in dev).
+let legacyImport: Promise<void> | null = null;
+
+function importLegacyGoals() {
+  if (legacyImport) return legacyImport;
+
+  legacyImport = (async () => {
+    let stored: unknown;
+    try {
+      const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (!raw) return;
+      stored = JSON.parse(raw);
+    } catch {
+      return; // unreadable / storage blocked: nothing to import
+    }
+
+    const list = Array.isArray(stored) ? stored : [];
+    const rows = list.flatMap((entry) => {
+      const old = (entry ?? {}) as Record<string, unknown>;
+      const goal = typeof old.goal === "string" ? old.goal.trim() : "";
+      if (!goal) return [];
+
+      const priority =
+        old.priority === "low" || old.priority === "medium" || old.priority === "high"
+          ? old.priority
+          : null;
+      const deadline =
+        typeof old.deadline === "string" && /^\d{4}-\d{2}-\d{2}$/.test(old.deadline)
+          ? old.deadline
+          : null;
+      const notes = typeof old.notes === "string" && old.notes.trim() ? old.notes.trim() : null;
+      const createdAt =
+        typeof old.created_at === "string" && !Number.isNaN(Date.parse(old.created_at))
+          ? old.created_at
+          : undefined;
+
+      return [{ goal, priority, deadline, notes, progress: clampProgress(old.progress), created_at: createdAt }];
+    });
+
+    if (rows.length > 0) {
+      const { error } = await supabase.from("goals").insert(rows);
+      if (error) throw error;
+    }
+
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  })().finally(() => {
+    legacyImport = null;
+  });
+
+  return legacyImport;
+}
+
 export function GoalsPage() {
+  const userId = useRequireUser();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [activeSection, setActiveSection] = useState<Section>("goals");
 
-  // Load goals from this browser.
-  useEffect(() => {
-    try {
-      const savedGoals = localStorage.getItem(STORAGE_KEY);
+  // Progress changes waiting to be saved, by goal id.
+  const pendingProgress = useRef(new Map<number, { timer: number; progress: number }>());
 
-      if (savedGoals) {
-        const parsed = JSON.parse(savedGoals);
+  async function loadGoals() {
+    const { data, error } = await supabase
+      .from("goals")
+      .select(GOAL_COLUMNS)
+      .order("created_at", { ascending: false });
 
-        if (Array.isArray(parsed)) {
-          setGoals(
-            parsed.map((goal) => ({
-              ...goal,
-              progress: Math.min(100, Math.max(0, Number(goal.progress) || 0)),
-            }))
-          );
-        }
-      }
-    } catch {
-      toast.error("Couldn't load your saved goals");
-    } finally {
-      setLoading(false);
+    if (error) {
+      toast.error("Couldn't load goals", { description: error.message });
+    } else {
+      setGoals((data ?? []) as Goal[]);
     }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    if (!userId) return;
+
+    (async () => {
+      try {
+        await importLegacyGoals();
+      } catch (error) {
+        toast.error("Couldn't move your saved goals to your account yet", {
+          description: (error as { message?: string }).message ?? String(error),
+        });
+      }
+      await loadGoals();
+    })();
+  }, [userId]);
+
+  async function saveProgress(id: number, progress: number) {
+    const { error } = await supabase.from("goals").update({ progress }).eq("id", id);
+
+    if (error) {
+      toast.error("Couldn't save your progress", { description: error.message });
+      await loadGoals(); // show what's actually saved
+    }
+  }
+
+  // Save anything still waiting when leaving the page.
+  useEffect(() => {
+    const pending = pendingProgress.current;
+    return () => {
+      pending.forEach(({ timer, progress }, id) => {
+        window.clearTimeout(timer);
+        void saveProgress(id, progress);
+      });
+      pending.clear();
+    };
   }, []);
 
-  // Save goals whenever they change.
-  useEffect(() => {
-    if (loading) return;
-
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(goals));
-    } catch {
-      toast.error("Couldn't save your goals in this browser");
-    }
-  }, [goals, loading]);
-
-  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const form = event.currentTarget;
@@ -95,25 +177,34 @@ export function GoalsPage() {
 
     setSaving(true);
 
-    const newGoal: Goal = {
-      id: crypto.randomUUID(),
-      goal,
-      priority: priority || null,
-      deadline,
-      notes: notes || null,
-      progress: 0,
-      created_at: new Date().toISOString(),
-    };
-
-    setGoals((current) => [newGoal, ...current]);
-    form.reset();
+    const { data: saved, error } = await supabase
+      .from("goals")
+      .insert({
+        goal,
+        priority: priority || null,
+        deadline,
+        notes: notes || null,
+      })
+      .select(GOAL_COLUMNS)
+      .single();
 
     setSaving(false);
+
+    if (error) {
+      toast.error("Couldn't save goal", { description: error.message });
+      return;
+    }
+
+    setGoals((current) => [saved as Goal, ...current]);
+    form.reset();
     toast.success("Goal added successfully");
   }
 
-  function updateProgress(id: string, progress: number) {
-    const newProgress = Math.min(100, Math.max(0, progress));
+  // Shows the new value right away; saves once the slider stops moving.
+  function updateProgress(id: number, progress: number) {
+    const newProgress = clampProgress(progress);
+    const before = goals.find((goal) => goal.id === id);
+    if (!before || before.progress === newProgress) return;
 
     setGoals((current) =>
       current.map((goal) =>
@@ -124,12 +215,38 @@ export function GoalsPage() {
     if (newProgress === 100) {
       toast.success("Goal completed! Congratulations! 🎉");
     }
+
+    const pending = pendingProgress.current;
+    const waiting = pending.get(id);
+    if (waiting) window.clearTimeout(waiting.timer);
+
+    const timer = window.setTimeout(() => {
+      pending.delete(id);
+      void saveProgress(id, newProgress);
+    }, PROGRESS_SAVE_DELAY_MS);
+
+    pending.set(id, { timer, progress: newProgress });
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: number) {
     setDeletingId(id);
-    setGoals((current) => current.filter((goal) => goal.id !== id));
+
+    const waiting = pendingProgress.current.get(id);
+    if (waiting) {
+      window.clearTimeout(waiting.timer);
+      pendingProgress.current.delete(id);
+    }
+
+    const { error } = await supabase.from("goals").delete().eq("id", id);
+
     setDeletingId(null);
+
+    if (error) {
+      toast.error("Couldn't delete goal", { description: error.message });
+      return;
+    }
+
+    setGoals((current) => current.filter((goal) => goal.id !== id));
     toast.success("Goal deleted");
   }
 
