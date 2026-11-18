@@ -33,10 +33,11 @@ const sourceStyles: Record<Source, { label: string; className: string; href: str
 
 const gridColumns = { gridTemplateColumns: "72px repeat(7, minmax(0, 1fr))" };
 
-// What the optimize-schedule Edge Function returns.
+// What the optimize-schedule Edge Function returns. A block with `date` (YYYY-MM-DD) is
+// one-time prep for an assignment or work task; without it, the block repeats every week.
 type AiPlan = {
   summary: string;
-  blocks: { day: string; start: string; end: string; title: string; category: Source }[];
+  blocks: { day: string; start: string; end: string; title: string; category: Source; date?: string }[];
 };
 
 type Deadline = { id: number; goal: string; priority: string | null; deadline: string };
@@ -168,10 +169,13 @@ export function SchedulePage() {
     }
   }
 
-  // The Edge Function reads the user's data itself, so nothing needs to be sent.
+  // The Edge Function reads the user's data itself; it only needs today's local date
+  // to plan one-time prep blocks before assignment / work task due dates.
   async function optimizeSchedule() {
     setOptimizing(true);
-    const { data, error } = await supabase.functions.invoke<AiPlan>("optimize-schedule");
+    const { data, error } = await supabase.functions.invoke<AiPlan>("optimize-schedule", {
+      body: { today: toDateKey(new Date()) },
+    });
     setOptimizing(false);
 
     if (error || !data) {
@@ -230,7 +234,8 @@ export function SchedulePage() {
     return () => window.removeEventListener("pointerup", stopPainting);
   }, []);
 
-  // The recurring schedule is the same every week; the dates only matter for goal deadlines.
+  // The recurring schedule is the same every week; the dates matter for goal deadlines and
+  // one-time AI blocks.
   const weekStart = addDays(startOfWeek(now), weekOffset * 7);
   const weekDates = days.map((_, d) => addDays(weekStart, d));
   const weekKeys = weekDates.map(toDateKey);
@@ -249,7 +254,8 @@ export function SchedulePage() {
 
   if (showAi && aiPlan) {
     aiPlan.blocks.forEach((block, i) => {
-      const d = days.indexOf(block.day);
+      // One-time blocks only show in the week that contains their date.
+      const d = block.date ? weekKeys.indexOf(block.date) : days.indexOf(block.day);
       const start = toHours(block.start)!;
       const end = toHours(block.end)!;
       if (d === -1) return;
